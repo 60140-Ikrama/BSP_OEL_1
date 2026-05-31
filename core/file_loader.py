@@ -19,15 +19,33 @@ def load_ecg_file(filepath, fs=250):
     ext = os.path.splitext(filepath)[1].lower()
     
     if ext in ['.csv', '.txt']:
-        return _load_text_file(filepath, fs)
+        t, sig, file_fs = _load_text_file(filepath, fs)
     elif ext == '.mat':
-        return _load_mat_file(filepath, fs)
+        t, sig, file_fs = _load_mat_file(filepath, fs)
     elif ext == '.dat':
-        return _load_dat_file(filepath, fs)
+        t, sig, file_fs = _load_dat_file(filepath, fs)
     elif ext == '.edf':
-        return _load_edf_file(filepath, fs)
+        t, sig, file_fs = _load_edf_file(filepath, fs)
     else:
         raise ValueError(f"Unsupported file format: {ext}")
+
+    # Clean NaNs and infs from the signal to prevent filter divergence (e.g. in filtfilt)
+    sig = np.asarray(sig, dtype=np.float64)
+    non_finite_mask = ~np.isfinite(sig)
+    if non_finite_mask.any():
+        finite_mask = ~non_finite_mask
+        if finite_mask.any():
+            # Interpolate non-finite values using nearest finite points
+            sig[non_finite_mask] = np.interp(
+                np.flatnonzero(non_finite_mask), 
+                np.flatnonzero(finite_mask), 
+                sig[finite_mask]
+            )
+        else:
+            # Fallback if entire signal is non-finite
+            sig[:] = 0.0
+
+    return t, sig, file_fs
 
 def _load_text_file(filepath, default_fs):
     """

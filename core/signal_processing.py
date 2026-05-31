@@ -41,8 +41,12 @@ class ECGProcessor:
         Designs a Butterworth bandpass filter.
         """
         nyq = 0.5 * self.fs
-        low = lowcut / nyq
-        high = highcut / nyq
+        # Constrain lowcut and highcut to be within Nyquist limits (0 < Wn < 1)
+        lowcut_val = max(0.01, min(lowcut, nyq - 1.0))
+        highcut_val = max(lowcut_val + 1.0, min(highcut, nyq - 1.0))
+        
+        low = lowcut_val / nyq
+        high = highcut_val / nyq
         b, a = butter(order, [low, high], btype='band')
         return b, a
 
@@ -90,6 +94,14 @@ class ECGProcessor:
             window_size += 1
         if window_size < 3:
             window_size = 3
+            
+        # Ensure window_size is strictly smaller than the signal length to prevent SciPy's polyfit crash
+        n = len(data)
+        if window_size >= n:
+            window_size = n - 1 if n % 2 == 0 else n - 2
+            if window_size < 3:
+                # Signal is too short for Savitzky-Golay filtering, return original signal
+                return data
         return savgol_filter(data, window_length=window_size, polyorder=polyorder)
 
     def pan_tompkins_detector(self, data):
