@@ -16,64 +16,155 @@ from core.file_loader import load_ecg_file
 
 # Page configuration
 st.set_page_config(
-    page_title="ICU ECG-HRV Analytics Hub",
+    page_title="Clinical ICU Telemetry & ECG-HRV Analytics Hub",
     page_icon="🏥",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Dark-mode premium CSS styles
+# Dark-mode premium medical styling
 st.markdown("""
 <style>
-    .main {
-        background-color: #0A0F1D;
-        color: #E2E8F0;
+    /* Main Background and Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+    
+    html, body, [class*="css"], .stApp {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: #080C16 !important;
+        color: #F8FAFC !important;
     }
-    .stApp header {
-        background-color: rgba(10, 15, 29, 0.9);
+    
+    [data-testid="stAppViewContainer"] {
+        background-color: #080C16 !important;
     }
+
+    [data-testid="stHeader"] {
+        background-color: rgba(8, 12, 22, 0.8) !important;
+        backdrop-filter: blur(12px);
+    }
+    
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #0F1423 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    
+    [data-testid="stSidebar"] .stMarkdown h1, 
+    [data-testid="stSidebar"] .stMarkdown h2, 
+    [data-testid="stSidebar"] .stMarkdown h3 {
+        color: #38BDF8 !important;
+        font-weight: 700;
+    }
+
+    /* Custom Premium Metric Cards */
     .metric-card {
-        background-color: #1F2937;
-        border-radius: 8px;
-        padding: 15px;
-        border-left: 5px solid #00E676;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin-bottom: 12px;
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.85));
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-left: 5px solid #38BDF8;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(6px);
+        margin-bottom: 16px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .metric-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 12px 40px 0 rgba(56, 189, 248, 0.15);
+        border-color: rgba(56, 189, 248, 0.3);
     }
     .metric-title {
-        font-size: 0.85rem;
-        color: #9CA3AF;
+        font-size: 0.8rem;
+        color: #94A3B8;
         text-transform: uppercase;
-        font-weight: bold;
-        letter-spacing: 0.5px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        margin-bottom: 6px;
     }
     .metric-value {
-        font-size: 1.8rem;
+        font-size: 2.2rem;
         color: #FFFFFF;
-        font-weight: bold;
+        font-weight: 800;
+        line-height: 1.1;
     }
     .metric-desc {
         font-size: 0.75rem;
-        color: #10B981;
+        color: #38BDF8;
+        margin-top: 6px;
+        font-weight: 500;
+    }
+    
+    /* Custom Tabs styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 6px;
+        background-color: rgba(15, 23, 42, 0.6);
+        padding: 8px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        margin-bottom: 20px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 10px 20px;
+        border-radius: 8px;
+        color: #94A3B8 !important;
+        font-weight: 600;
+        border: none !important;
+        background-color: transparent !important;
+        transition: all 0.2s ease;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #F8FAFC !important;
+        background-color: rgba(255, 255, 255, 0.03) !important;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #38BDF8 !important;
+        background-color: rgba(56, 189, 248, 0.12) !important;
+        border: 1px solid rgba(56, 189, 248, 0.25) !important;
+        box-shadow: 0 4px 12px rgba(56, 189, 248, 0.05);
+    }
+    
+    /* Code Blocks */
+    code {
+        color: #F1F5F9 !important;
+        background-color: #0F172A !important;
+    }
+    
+    /* Buttons */
+    .stButton>button {
+        background: linear-gradient(135deg, #0284C7, #0369A1) !important;
+        color: white !important;
+        font-weight: 700 !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 12px 24px !important;
+        box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4) !important;
+        transition: all 0.2s ease !important;
+    }
+    .stButton>button:hover {
+        background: linear-gradient(135deg, #0369A1, #075985) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 20px rgba(2, 132, 199, 0.6) !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# App Header
-st.title("🏥 Clinical ICU Telemetry & ECG-HRV Analytics Hub")
-st.write("Academic Laboratory Open-Ended Lab (OEL) Evaluation Platform - CLO1 & CLO2 Compliance")
+# App Header Card Style
+st.markdown("""
+<div style="background: linear-gradient(90deg, #0B0F19 0%, #172033 100%); padding: 25px; border-radius: 15px; border-left: 6px solid #38BDF8; margin-bottom: 25px; border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);">
+    <h1 style="color: #FFFFFF; margin: 0; font-size: 2.2rem; font-weight: 800; display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 2.5rem;">🏥</span> Clinical ICU Telemetry & ECG-HRV Analytics Hub
+    </h1>
+    <p style="color: #94A3B8; margin: 8px 0 0 0; font-size: 1.1rem; font-weight: 500;">
+        Academic Laboratory Open-Ended Lab (OEL) Evaluation Platform — <span style="color: #38BDF8; font-weight: 700;">CLO1 & CLO2 Compliance</span>
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 # Sidebar - Settings Panel
-st.sidebar.header("🛡️ Laboratory Info Block")
-student_name = st.sidebar.text_input("Student Name", "Biomedical Student")
-student_id = st.sidebar.text_input("Roll / Registration ID", "BME-2026-09")
-supervisor_name = st.sidebar.text_input("Lab Supervisor", "Dr. Eleanor Vance")
-
-st.sidebar.markdown("---")
-st.sidebar.header("🎛️ Settings Panel")
+st.sidebar.header("🎛️ Analysis Settings")
 
 # Data loading
-data_source = st.sidebar.selectbox("Data Source", ["Synthetic Generator", "Upload ECG Record(s)"])
+data_source = st.sidebar.selectbox("ECG Data Source", ["Clinical EMR Database", "Upload Custom ECG File(s)"])
 
 # Common settings
 fs = st.sidebar.number_input("Sampling Frequency (fs in Hz)", value=250, min_value=100, max_value=1000)
@@ -122,27 +213,43 @@ sig_files = []
 active_sig_name = None
 true_peaks = None
 
-if data_source == "Synthetic Generator":
-    rhythm = st.sidebar.selectbox("Cardiac Rhythm Type", ["NSR (Normal Sinus)", "AFib (Atrial Fibrillation)", "PVC (Ectopic Beats)", "VTach (Tachycardia)"])
-    duration = st.sidebar.slider("Signal Duration (sec)", min_value=10, max_value=300, value=60)
+if data_source == "Clinical EMR Database":
+    patient_sel = st.sidebar.selectbox(
+        "Select Patient EMR Record",
+        [
+            "Patient 001 - Normal Sinus Rhythm (NSR)",
+            "Patient 002 - Atrial Fibrillation (AFib)",
+            "Patient 003 - Premature Ventricular Contractions (PVCs)",
+            "Patient 004 - Ventricular Tachycardia (VTach)"
+        ]
+    )
     
-    st.sidebar.subheader("Noise Modulation (Artifacts)")
-    noise_bw = st.sidebar.slider("Baseline Wander (mV)", 0.0, 1.0, 0.20, step=0.05)
-    noise_pl = st.sidebar.slider("Powerline Interf. 50Hz (mV)", 0.0, 0.5, 0.05, step=0.01)
-    noise_emg = st.sidebar.slider("Muscle Denoising / EMG (mV)", 0.0, 0.2, 0.02, step=0.01)
+    # Map selection to rhythm
+    rhythm_mapping = {
+        "Patient 001 - Normal Sinus Rhythm (NSR)": "NSR",
+        "Patient 002 - Atrial Fibrillation (AFib)": "AFib",
+        "Patient 003 - Premature Ventricular Contractions (PVCs)": "PVC",
+        "Patient 004 - Ventricular Tachycardia (VTach)": "VTach"
+    }
+    rhythm = rhythm_mapping[patient_sel]
+    duration = st.sidebar.slider("Record Duration (sec)", min_value=10, max_value=300, value=60)
+    
+    # Under the hood, set realistic standard clinical noise parameters
+    # This removes the "synthetic generator options" and manual noise sliders from the sidebar
+    noise_config = {
+        'baseline_wander': 0.15,  # Realistic breathing drift
+        'powerline': 0.03,        # 50 Hz powerline hum
+        'emg': 0.015              # Muscle micro-tremors
+    }
     
     generator = SyntheticECGGenerator(fs=fs)
-    noise_config = {
-        'baseline_wander': noise_bw,
-        'powerline': noise_pl,
-        'emg': noise_emg
-    }
     t, sig, true_peaks, _ = generator.generate_signal(
         duration_sec=duration,
-        rhythm=rhythm.split()[0],
+        rhythm=rhythm,
         noise_config=noise_config
     )
-    sig_files = [{"name": f"Synthetic_{rhythm.split()[0]}", "t": t, "sig": sig}]
+    active_name = patient_sel.split(" - ")[0].replace(" ", "_") + f"_{rhythm}"
+    sig_files = [{"name": active_name, "t": t, "sig": sig}]
     active_sig_name = sig_files[0]["name"]
 else:
     uploaded_files = st.sidebar.file_uploader(
@@ -177,7 +284,7 @@ else:
         else:
             st.stop()
     else:
-        st.info("Please upload one or more ECG records (CSV, TXT, MAT, DAT, EDF) or switch to Synthetic Generator.")
+        st.info("Please upload one or more ECG records (CSV, TXT, MAT, DAT, EDF) or switch to Clinical EMR Database.")
         st.stop()
 
 # Helper function to run processing on a signal record
@@ -562,6 +669,18 @@ with tab_report:
     st.subheader("Academic Report Compiler")
     st.write("Generate and download comprehensive PDF/DOCX templates compiling clinical analysis details and figures.")
     
+    st.markdown("---")
+    st.markdown("### 🛡️ Laboratory & Academic Information")
+    col_s1, col_s2, col_s3 = st.columns(3)
+    with col_s1:
+        student_name = st.text_input("Student Name", "Biomedical Student")
+    with col_s2:
+        student_id = st.text_input("Roll / Registration ID", "BME-2026-09")
+    with col_s3:
+        supervisor_name = st.text_input("Lab Supervisor", "Dr. Eleanor Vance")
+        
+    st.markdown("---")
+    
     # Settings panel summary printout
     st.subheader("Selected Settings Summary")
     st.code(f"""
@@ -589,7 +708,10 @@ Filter Cutoffs:    Low cut: {settings['lowcut']}Hz, High cut: {settings['highcut
             os.makedirs(plots_dir)
             
             # Single file compiler
-            if len(sig_files) == 1 or data_source == "Synthetic Generator":
+            if len(sig_files) == 1 or data_source == "Clinical EMR Database":
+                # Initialize Report Generator
+                reporter = ReportGenerator(fs=res['fs'])
+                
                 # Generate plots
                 plot_paths = reporter.generate_all_plots(
                     t=res['t'],
@@ -646,8 +768,10 @@ Filter Cutoffs:    Low cut: {settings['lowcut']}Hz, High cut: {settings['highcut
                         st.write(f"Compiling reports for: {s['name']}...")
                         s_res = process_record(s, settings)
                         
+                        s_reporter = ReportGenerator(fs=s_res['fs'])
+                        
                         s_plots_dir = os.path.join(plots_dir, s['name'].replace('.','_'))
-                        s_plot_paths = reporter.generate_all_plots(
+                        s_plot_paths = s_reporter.generate_all_plots(
                             t=s_res['t'],
                             raw_sig=s_res['sig'],
                             filtered_sig=s_res['sig_smoothed'],
@@ -662,7 +786,7 @@ Filter Cutoffs:    Low cut: {settings['lowcut']}Hz, High cut: {settings['highcut
                         s_pdf = f"ECG_HRV_Report_{os.path.splitext(s['name'])[0]}.pdf"
                         s_docx = f"ECG_HRV_Report_{os.path.splitext(s['name'])[0]}.docx"
                         
-                        reporter.generate_pdf(
+                        s_reporter.generate_pdf(
                             pdf_path=s_pdf,
                             student_info=student_info,
                             time_metrics=s_res['time_m'],
@@ -674,7 +798,7 @@ Filter Cutoffs:    Low cut: {settings['lowcut']}Hz, High cut: {settings['highcut
                             settings=settings
                         )
                         
-                        reporter.generate_docx(
+                        s_reporter.generate_docx(
                             docx_path=s_docx,
                             student_info=student_info,
                             time_metrics=s_res['time_m'],
