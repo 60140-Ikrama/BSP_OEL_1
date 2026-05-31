@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.signal import butter, filtfilt, savgol_filter, find_peaks
+import neurokit2 as nk
 
 class ECGProcessor:
     """
@@ -9,6 +10,31 @@ class ECGProcessor:
     """
     def __init__(self, fs=250):
         self.fs = fs
+
+    def detect_peaks_nk(self, data, method='neurokit'):
+        """
+        Detects R-peaks using NeuroKit2 algorithms.
+        Supported methods: 'neurokit', 'pantompkins1985', 'hamilton2002', 'elgendi2010', 'engzee2012', 'kalidas2016'
+        """
+        try:
+            # nk.ecg_peaks expects a 1D numeric array of signal values
+            signals, info = nk.ecg_peaks(data, sampling_rate=self.fs, method=method)
+            r_peaks = info['ECG_R_Peaks']
+            
+            # Align R-peaks with local maximum in data
+            aligned_r_peaks = []
+            search_win = int(0.04 * self.fs)  # 40ms window
+            for rp in r_peaks:
+                start = max(0, rp - search_win)
+                end = min(len(data), rp + search_win)
+                local_max_idx = start + np.argmax(np.abs(data[start:end]))
+                aligned_r_peaks.append(local_max_idx)
+            return np.unique(aligned_r_peaks)
+        except Exception as e:
+            # Fallback to custom Pan-Tompkins on failure
+            print(f"NeuroKit2 QRS detection failed ({e}). Falling back to custom Pan-Tompkins.")
+            peaks, _ = self.pan_tompkins_detector(data)
+            return peaks
 
     def butter_bandpass(self, lowcut=0.5, highcut=45.0, order=3):
         """

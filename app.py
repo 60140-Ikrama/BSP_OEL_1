@@ -1,24 +1,28 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.express as px
 import os
 import shutil
+import tempfile
+import zipfile
 
 from core.synthetic_data import SyntheticECGGenerator
 from core.signal_processing import ECGProcessor
 from core.hrv_analysis import HRVAnalyzer
 from core.report_generator import ReportGenerator
+from core.file_loader import load_ecg_file
 
-# Page config
+# Page configuration
 st.set_page_config(
-    page_title="ICU Telemetry Hub - ECG/HRV",
-    page_icon="⚡",
+    page_title="ICU ECG-HRV Analytics Hub",
+    page_icon="🏥",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom premium styling
+# Dark-mode premium CSS styles
 st.markdown("""
 <style>
     .main {
@@ -28,22 +32,20 @@ st.markdown("""
     .stApp header {
         background-color: rgba(10, 15, 29, 0.9);
     }
-    .css-1d391kg {
-        background-color: #111827;
-    }
     .metric-card {
         background-color: #1F2937;
         border-radius: 8px;
         padding: 15px;
         border-left: 5px solid #00E676;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin-bottom: 10px;
+        margin-bottom: 12px;
     }
     .metric-title {
         font-size: 0.85rem;
         color: #9CA3AF;
         text-transform: uppercase;
         font-weight: bold;
+        letter-spacing: 0.5px;
     }
     .metric-value {
         font-size: 1.8rem;
@@ -58,20 +60,67 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App Header
-st.title("🏥 ICU Telemetry & ECG-HRV Surveillance Board")
+st.title("🏥 Clinical ICU Telemetry & ECG-HRV Analytics Hub")
 st.write("Academic Laboratory Open-Ended Lab (OEL) Evaluation Platform - CLO1 & CLO2 Compliance")
 
-# Sidebar - Settings & Parameters
+# Sidebar - Settings Panel
 st.sidebar.header("🛡️ Laboratory Info Block")
 student_name = st.sidebar.text_input("Student Name", "Biomedical Student")
 student_id = st.sidebar.text_input("Roll / Registration ID", "BME-2026-09")
 supervisor_name = st.sidebar.text_input("Lab Supervisor", "Dr. Eleanor Vance")
 
 st.sidebar.markdown("---")
-st.sidebar.header("🎛️ Telemetry Signal Acquisition")
+st.sidebar.header("🎛️ Settings Panel")
 
-data_source = st.sidebar.selectbox("Data Source", ["Synthetic Generator", "Upload File (CSV/TXT)"])
-fs = st.sidebar.number_input("Sampling Frequency (Hz)", value=250, min_value=100, max_value=1000)
+# Data loading
+data_source = st.sidebar.selectbox("Data Source", ["Synthetic Generator", "Upload ECG Record(s)"])
+
+# Common settings
+fs = st.sidebar.number_input("Sampling Frequency (fs in Hz)", value=250, min_value=100, max_value=1000)
+
+st.sidebar.subheader("ECG Filter Cutoffs")
+lowcut = st.sidebar.slider("Butterworth Low Cut (Hz)", 0.1, 2.0, 0.5, step=0.1)
+highcut = st.sidebar.slider("Butterworth High Cut (Hz)", 20.0, 100.0, 40.0, step=5.0)
+
+st.sidebar.subheader("QRS R-Peak Method")
+rpeak_method = st.sidebar.selectbox(
+    "Algorithm Selection",
+    [
+        "Pan-Tompkins (Custom)",
+        "NeuroKit2 (Default)",
+        "NeuroKit2 (Hamilton)",
+        "NeuroKit2 (Elgendi)",
+        "NeuroKit2 (Kalidas)",
+        "NeuroKit2 (Engzee)"
+    ]
+)
+
+st.sidebar.subheader("Ectopic Beat Handling")
+ectopic_corrected = st.sidebar.checkbox("Enable Ectopic Correction", value=True)
+ectopic_thresh = st.sidebar.slider("Outlier Percent Threshold (%)", 10, 40, 20, step=5) / 100.0
+corr_method = st.sidebar.selectbox("Interpolation Type", ["spline", "linear"])
+
+st.sidebar.subheader("Welch PSD Parameters")
+welch_win_sec = st.sidebar.slider("Welch Window Size (sec)", 16, 128, 64, step=8)
+welch_overlap_pct = st.sidebar.slider("Welch Overlap (%)", 0, 90, 50, step=10)
+
+# Build settings dict
+settings = {
+    'fs': fs,
+    'lowcut': lowcut,
+    'highcut': highcut,
+    'rpeak_method': rpeak_method,
+    'ectopic_corrected': ectopic_corrected,
+    'ectopic_thresh': ectopic_thresh,
+    'corr_method': corr_method,
+    'welch_win_sec': welch_win_sec,
+    'welch_overlap_pct': welch_overlap_pct
+}
+
+# --- Load files or generate ---
+sig_files = []
+active_sig_name = None
+true_peaks = None
 
 if data_source == "Synthetic Generator":
     rhythm = st.sidebar.selectbox("Cardiac Rhythm Type", ["NSR (Normal Sinus)", "AFib (Atrial Fibrillation)", "PVC (Ectopic Beats)", "VTach (Tachycardia)"])
@@ -82,455 +131,572 @@ if data_source == "Synthetic Generator":
     noise_pl = st.sidebar.slider("Powerline Interf. 50Hz (mV)", 0.0, 0.5, 0.05, step=0.01)
     noise_emg = st.sidebar.slider("Muscle Denoising / EMG (mV)", 0.0, 0.2, 0.02, step=0.01)
     
-    # Generate ECG
     generator = SyntheticECGGenerator(fs=fs)
     noise_config = {
         'baseline_wander': noise_bw,
         'powerline': noise_pl,
         'emg': noise_emg
     }
-    t, sig, true_peaks, true_ectopics = generator.generate_signal(
+    t, sig, true_peaks, _ = generator.generate_signal(
         duration_sec=duration,
-        rhythm=rhythm.split()[0], # Grab NSR, AFib, etc.
+        rhythm=rhythm.split()[0],
         noise_config=noise_config
     )
-    rhythm_label = rhythm
+    sig_files = [{"name": f"Synthetic_{rhythm.split()[0]}", "t": t, "sig": sig}]
+    active_sig_name = sig_files[0]["name"]
 else:
-    uploaded_file = st.sidebar.file_uploader("Upload ECG Signal File", type=["csv", "txt"])
-    if uploaded_file is not None:
-        try:
-            if uploaded_file.name.endswith('.csv'):
-                df = pd.read_csv(uploaded_file)
-                if 'voltage' in df.columns:
-                    sig = df['voltage'].values
-                    t = df['time'].values if 'time' in df.columns else np.arange(len(sig)) / fs
-                else:
-                    sig = df.iloc[:,0].values
-                    t = np.arange(len(sig)) / fs
-            else:
-                sig = np.loadtxt(uploaded_file)
-                t = np.arange(len(sig)) / fs
-            duration = len(sig) / fs
-            rhythm_label = "Uploaded Patient Record"
-            true_peaks = None
-            true_ectopics = None
-        except Exception as e:
-            st.error(f"Error reading file: {e}")
+    uploaded_files = st.sidebar.file_uploader(
+        "Upload ECG Records",
+        type=["csv", "txt", "mat", "dat", "edf"],
+        accept_multiple_files=True
+    )
+    
+    if len(uploaded_files) > 0:
+        for f in uploaded_files:
+            # Save uploaded file in temp location to read it
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.name)[1]) as temp_f:
+                temp_f.write(f.getbuffer())
+                temp_path = temp_f.name
+                
+            try:
+                t, sig, file_fs = load_ecg_file(temp_path, fs=fs)
+                sig_files.append({
+                    "name": f.name,
+                    "t": t,
+                    "sig": sig,
+                    "fs": file_fs
+                })
+            except Exception as e:
+                st.error(f"Error loading {f.name}: {e}")
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    
+        if len(sig_files) > 0:
+            active_sig_name = st.sidebar.selectbox("Select Active File to Inspect", [s["name"] for s in sig_files])
+        else:
             st.stop()
     else:
-        st.info("Please upload an ECG CSV/TXT file, or switch to Synthetic Generator.")
+        st.info("Please upload one or more ECG records (CSV, TXT, MAT, DAT, EDF) or switch to Synthetic Generator.")
         st.stop()
 
-# DSP Tuning Panel
-st.sidebar.markdown("---")
-st.sidebar.header("🎚️ Biomedical DSP Settings")
-lowcut = st.sidebar.slider("Butterworth Low Cut (Hz)", 0.1, 2.0, 0.5, step=0.1)
-highcut = st.sidebar.slider("Butterworth High Cut (Hz)", 20.0, 100.0, 45.0, step=5.0)
-ectopic_thresh = st.sidebar.slider("Ectopic Outlier Limit (%)", 10, 40, 20, step=5) / 100.0
-corr_method = st.sidebar.selectbox("Ectopic Interpolation", ["spline", "linear"])
+# Helper function to run processing on a signal record
+def process_record(record, settings):
+    # Pull parameters
+    record_fs = record.get("fs", settings['fs'])
+    processor = ECGProcessor(fs=record_fs)
+    analyzer = HRVAnalyzer(fs_ecg=record_fs)
+    
+    sig = record["sig"]
+    t = record["t"]
+    
+    # 1. DSP filtering
+    sig_clean, baseline = processor.remove_baseline_wander_median(sig)
+    sig_filtered = processor.apply_bandpass(sig_clean, lowcut=settings['lowcut'], highcut=settings['highcut'])
+    sig_smoothed = processor.remove_noise_savgol(sig_filtered)
+    
+    # 2. R-peak detection
+    method = settings['rpeak_method']
+    if method == "Pan-Tompkins (Custom)":
+        r_peaks, stages = processor.pan_tompkins_detector(sig_smoothed)
+    else:
+        # Convert NeuroKit2 method string
+        nk_methods = {
+            "NeuroKit2 (Default)": "neurokit",
+            "NeuroKit2 (Hamilton)": "hamilton2002",
+            "NeuroKit2 (Elgendi)": "elgendi2010",
+            "NeuroKit2 (Kalidas)": "kalidas2016",
+            "NeuroKit2 (Engzee)": "engzee2012"
+        }
+        nk_method = nk_methods.get(method, "neurokit")
+        r_peaks = processor.detect_peaks_nk(sig_smoothed, method=nk_method)
+        stages = None
+        
+    # 3. RR interval extraction
+    rr_intervals = np.diff(r_peaks) / record_fs * 1000.0
+    
+    # 4. Ectopic correction
+    ectopic_mask = analyzer.detect_ectopic_beats(rr_intervals, threshold_pct=settings['ectopic_thresh'])
+    if settings['ectopic_corrected']:
+        corrected_rr = analyzer.correct_ectopic_beats(rr_intervals, ectopic_mask, method=settings['corr_method'])
+    else:
+        corrected_rr = rr_intervals
+        
+    ectopic_count = np.sum(ectopic_mask)
+    ectopic_pct = (ectopic_count / len(rr_intervals)) * 100.0 if len(rr_intervals) > 0 else 0.0
+    ectopic_stats = {
+        'count': int(ectopic_count),
+        'total_beats': int(len(r_peaks)),
+        'pct': ectopic_pct
+    }
+    
+    # 5. HRV features
+    time_m = analyzer.compute_time_domain(corrected_rr)
+    freq_m = analyzer.compute_frequency_domain(
+        corrected_rr,
+        welch_win_sec=settings['welch_win_sec'],
+        welch_overlap_pct=settings['welch_overlap_pct']
+    )
+    nonl_m = analyzer.compute_nonlinear(corrected_rr)
+    interpretation = analyzer.generate_clinical_interpretation(time_m, freq_m, nonl_m)
+    
+    return {
+        't': t,
+        'sig': sig,
+        'sig_smoothed': sig_smoothed,
+        'baseline': baseline,
+        'r_peaks': r_peaks,
+        'rr_intervals': rr_intervals,
+        'corrected_rr': corrected_rr,
+        'ectopic_mask': ectopic_mask,
+        'ectopic_stats': ectopic_stats,
+        'time_m': time_m,
+        'freq_m': freq_m,
+        'nonl_m': nonl_m,
+        'interpretation': interpretation,
+        'stages': stages,
+        'fs': record_fs
+    }
 
-# Initialize Processor & Analyzer
-processor = ECGProcessor(fs=fs)
-analyzer = HRVAnalyzer(fs_ecg=fs)
-reporter = ReportGenerator(fs=fs)
+# Process the active file
+active_record = next(s for s in sig_files if s["name"] == active_sig_name)
+res = process_record(active_record, settings)
 
-# Run Signal Processing
-sig_clean, baseline = processor.remove_baseline_wander_median(sig)
-sig_filtered = processor.apply_bandpass(sig_clean, lowcut=lowcut, highcut=highcut)
-sig_smoothed = processor.remove_noise_savgol(sig_filtered)
-
-# R-peak detection
-r_peaks, PT_stages = processor.pan_tompkins_detector(sig_smoothed)
-rr_intervals = np.diff(r_peaks) / fs * 1000.0
-
-# Ectopic detection and correction
-ectopic_mask = analyzer.detect_ectopic_beats(rr_intervals, threshold_pct=ectopic_thresh)
-corrected_rr = analyzer.correct_ectopic_beats(rr_intervals, ectopic_mask, method=corr_method)
-
-# HRV feature extraction
-time_m = analyzer.compute_time_domain(corrected_rr)
-freq_m = analyzer.compute_frequency_domain(corrected_rr)
-nonl_m = analyzer.compute_nonlinear(corrected_rr)
-interpretation = analyzer.generate_clinical_interpretation(time_m, freq_m, nonl_m)
-
-# Main Dashboard Layout tabs
-tab_overview, tab_dsp, tab_qrs, tab_ectopic, tab_hrv, tab_report = st.tabs([
+# Dashboard tabs
+tab_overview, tab_dsp, tab_qrs, tab_ectopic, tab_hrv_time, tab_hrv_freq, tab_hrv_nonl, tab_report = st.tabs([
     "📋 Ward Overview", 
-    "📈 CLO1: DSP Preprocessing", 
-    "⚡ Pan-Tompkins QRS", 
-    "🩺 Ectopic Correction", 
-    "🧠 Autonomic HRV Lab", 
-    "🎓 Academic Report Compiler"
+    "📈 ECG Signal", 
+    "⚡ QRS Detector", 
+    "🩺 RR & Ectopic Analysis", 
+    "📊 Time-Domain HRV", 
+    "📈 Frequency-Domain HRV",
+    "🔬 Non-Linear Analysis",
+    "🎓 Report Desk"
 ])
 
 # Tab 1: Ward Overview
 with tab_overview:
     col1, col2 = st.columns([2, 1])
     with col1:
-        st.subheader("Live Telemetry Stream View")
-        zoom_sec = st.slider("Scope window (sec)", min_value=2, max_value=min(20, int(duration)), value=6)
+        st.subheader(f"Interactive Scope: {active_sig_name}")
+        zoom_sec = st.slider("Scope window (sec)", min_value=2, max_value=min(30, int(len(res['sig'])/res['fs'])), value=8)
         
-        # Plot scope
-        zoom_idx = t <= zoom_sec
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(t[zoom_idx], sig[zoom_idx], color='#EF5350', label='Raw Noisy ECG (mV)', alpha=0.6, linewidth=1.0)
-        ax.plot(t[zoom_idx], sig_smoothed[zoom_idx], color='#00E676', label='Clean ECG (mV)', linewidth=1.5)
+        # Plotly ECG Preprocessing Visualizer
+        zoom_idx = res['t'] <= zoom_sec
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=res['t'][zoom_idx], y=res['sig'][zoom_idx], name="Raw Noisy ECG", line=dict(color="#EF5350", width=1), opacity=0.6))
+        fig.add_trace(go.Scatter(x=res['t'][zoom_idx], y=res['sig_smoothed'][zoom_idx], name="Cleaned ECG", line=dict(color="#00E676", width=1.5)))
         
-        if true_peaks is not None:
-            peaks_in_zoom = r_peaks[r_peaks < int(zoom_sec * fs)]
-            ax.scatter(t[peaks_in_zoom], sig_smoothed[peaks_in_zoom], color='#FFD600', s=45, label='R-Peak', zorder=5)
-            
-        ax.set_xlabel("Time (seconds)", color='#E2E8F0')
-        ax.set_ylabel("Amplitude (mV)", color='#E2E8F0')
-        ax.set_facecolor('#0F172A')
-        fig.patch.set_facecolor('#0A0F1D')
-        ax.tick_params(colors='#E2E8F0')
-        ax.grid(color='#334155', linestyle=':', linewidth=0.5)
-        ax.legend(loc='upper right', facecolor='#1E2937', edgecolor='#475569', labelcolor='#E2E8F0')
-        st.pyplot(fig)
-        plt.close(fig)
+        # Peak markers
+        peaks_in_zoom = res['r_peaks'][res['r_peaks'] < int(zoom_sec * res['fs'])]
+        fig.add_trace(go.Scatter(x=res['t'][peaks_in_zoom], y=res['sig_smoothed'][peaks_in_zoom], mode="markers", name="Detected R-Peak", marker=dict(color="#FFD600", size=10, line=dict(color="black", width=1))))
+        
+        fig.update_layout(
+            xaxis_title="Time (seconds)",
+            yaxis_title="Amplitude (mV)",
+            template="plotly_dark",
+            margin=dict(l=20, r=20, t=30, b=20),
+            height=380,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig, use_container_width=True)
         
     with col2:
-        st.subheader("Patient Clinical Vitals")
+        st.subheader("Telemetry Vitals")
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-title">Detected Heart Rate</div>
-            <div class="metric-value">{time_m['mean_hr']:.1f} <span style="font-size:1rem;">BPM</span></div>
-            <div class="metric-desc">Rhythm: {rhythm_label}</div>
+            <div class="metric-title">Mean Heart Rate</div>
+            <div class="metric-value">{res['time_m']['mean_hr']:.1f} <span style="font-size:1rem;">BPM</span></div>
+            <div class="metric-desc">Method: {settings['rpeak_method']}</div>
         </div>
         
         <div class="metric-card" style="border-left-color: #29B6F6;">
             <div class="metric-title">Vagal Autonomic Score (RMSSD)</div>
-            <div class="metric-value">{time_m['rmssd']:.1f} <span style="font-size:1rem;">ms</span></div>
-            <div class="metric-desc">Autonomic Vagal Control Indicator</div>
+            <div class="metric-value">{res['time_m']['rmssd']:.1f} <span style="font-size:1rem;">ms</span></div>
+            <div class="metric-desc">Parasympathetic Vagal Control</div>
         </div>
 
         <div class="metric-card" style="border-left-color: #FFA726;">
             <div class="metric-title">Ectopic Load</div>
-            <div class="metric-value">{np.sum(ectopic_mask)} <span style="font-size:1rem;">PVCs ({ (np.sum(ectopic_mask)/len(rr_intervals)*100.0 if len(rr_intervals) > 0 else 0):.1f}%)</span></div>
-            <div class="metric-desc">Corrected via Cubic Splines</div>
+            <div class="metric-value">{res['ectopic_stats']['count']} <span style="font-size:1rem;">PVCs ({res['ectopic_stats']['pct']:.2f}%)</span></div>
+            <div class="metric-desc">Correction: {"ON (" + settings['corr_method'] + ")" if settings['ectopic_corrected'] else "OFF"}</div>
         </div>
         """, unsafe_allow_html=True)
         
-        st.subheader("Quick Diagnostics Summary")
-        if rhythm_label.startswith("PVC"):
-            st.error("⚠️ PVC Arrhythmia Detected. Significant ectopic beat burden. ECG displays wide ventricular complexes followed by compensatory pauses.")
-        elif rhythm_label.startswith("AFib"):
-            st.warning("⚠️ Atrial Fibrillation Detected. Irregularly irregular R-R pacing. Absent P-waves. Vagal tone metrics will show pseudo-elevation due to chaotic firing.")
-        elif rhythm_label.startswith("VTach"):
-            st.error("🚨 Ventricular Tachycardia! Rapid wide QRS complexes. Immediate resuscitation review required.")
-        else:
-            st.success("✅ Normal Sinus Rhythm. Stable baseline homeostasis. Normal Respiratory Sinus Arrhythmia (RSA) present.")
+    # Batch summaries if multiple files
+    if len(sig_files) > 1:
+        st.markdown("---")
+        st.subheader("📊 Batch Processing Summary Overview")
+        
+        batch_data = []
+        for s in sig_files:
+            try:
+                s_res = process_record(s, settings)
+                batch_data.append({
+                    "File Name": s["name"],
+                    "Heart Rate (BPM)": f"{s_res['time_m']['mean_hr']:.1f}",
+                    "SDNN (ms)": f"{s_res['time_m']['sdnn']:.1f}",
+                    "RMSSD (ms)": f"{s_res['time_m']['rmssd']:.1f}",
+                    "LF/HF Ratio": f"{s_res['freq_m']['ratio']:.2f}",
+                    "Ectopic Count": f"{s_res['ectopic_stats']['count']} ({s_res['ectopic_stats']['pct']:.1f}%)",
+                    "Complexity (SampEn)": f"{s_res['nonl_m']['sampen']:.3f}"
+                })
+            except Exception as e:
+                st.write(f"Could not process {s['name']}: {e}")
+                
+        df_batch = pd.DataFrame(batch_data)
+        st.dataframe(df_batch, use_container_width=True)
 
-# Tab 2: DSP Preprocessing
+# Tab 2: ECG Preprocessing
 with tab_dsp:
-    st.subheader("CLO1: Biomedical Preprocessing Stages")
-    st.write("Demonstration of baseline drift extraction and high-frequency filtering. Check equations in the methodology section.")
+    st.subheader("ECG Preprocessing & Baseline Wander removal (CLO1)")
+    st.write("Demonstration of baseline drift extraction and bandpass noise suppression.")
     
     col_sig, col_details = st.columns([3, 1.2])
     with col_sig:
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 6.5), sharex=True)
-        fig.patch.set_facecolor('#0A0F1D')
+        # Plotly chart of raw, baseline drift, and cleaned signal
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=res['t'], y=res['sig'], name="Raw Signal", line=dict(color="#EF5350", width=1), opacity=0.5))
+        fig.add_trace(go.Scatter(x=res['t'], y=res['baseline'], name="Baseline Wander (Dual Median)", line=dict(color="#FFFFFF", width=1.5)))
+        fig.add_trace(go.Scatter(x=res['t'], y=res['sig_smoothed'], name="Processed (Bandpass)", line=dict(color="#00E676", width=1.2)))
         
-        # Plot 1: Raw + Baseline
-        ax1.plot(t, sig, color='#EF5350', alpha=0.5, label='Raw noisy signal')
-        ax1.plot(t, baseline, color='#FFF', linewidth=1.5, label='Dual median baseline estimate')
-        ax1.set_title("1. Baseline Wander Capture (Dual Median filtering)", color='#E2E8F0', fontsize=10)
-        ax1.set_facecolor('#0F172A')
-        ax1.tick_params(colors='#E2E8F0')
-        ax1.legend(facecolor='#1E2937', labelcolor='#E2E8F0', loc='upper right')
-        ax1.grid(color='#334155', linestyle=':', linewidth=0.5)
-        
-        # Plot 2: Cleaned
-        ax2.plot(t, sig_clean, color='#29B6F6', label='Baseline wander removed')
-        ax2.set_title("2. Drift-Corrected ECG (Zero-Phase baseline removal)", color='#E2E8F0', fontsize=10)
-        ax2.set_facecolor('#0F172A')
-        ax2.tick_params(colors='#E2E8F0')
-        ax2.grid(color='#334155', linestyle=':', linewidth=0.5)
-        
-        # Plot 3: Filtered & Smoothed
-        ax3.plot(t, sig_smoothed, color='#66BB6A', label='Bandpass + Savitzky-Golay')
-        ax3.set_title("3. Final Preprocessed Signal (0.5-45 Hz Bandpass + S-G smoothing)", color='#E2E8F0', fontsize=10)
-        ax3.set_xlabel("Time (seconds)", color='#E2E8F0')
-        ax3.set_facecolor('#0F172A')
-        ax3.tick_params(colors='#E2E8F0')
-        ax3.grid(color='#334155', linestyle=':', linewidth=0.5)
-        
-        plt.tight_layout()
-        st.pyplot(fig)
-        plt.close(fig)
+        fig.update_layout(
+            xaxis_title="Time (seconds)",
+            yaxis_title="Amplitude (mV)",
+            template="plotly_dark",
+            margin=dict(l=20, r=20, t=30, b=20),
+            height=450,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig, use_container_width=True)
         
     with col_details:
-        st.info("""
-        ### Filter Specifications:
-        - **Baseline Drift Removal**: Dual rolling median filtering. Removes slow motion artifacts (0.1–0.5 Hz breathing movement) without attenuating QRS peak heights.
-        - **Bandpass Filter**: 3rd-order Butterworth bandpass (0.5 to 45 Hz). Suppresses high-frequency muscular noise and 50 Hz powerline interference.
-        - **Zero-Phase Implementation**: Applied via double-pass filtering (Forward + Backward). This forces phase shift to be exactly zero, preserving the original positions of R-peaks.
+        st.info(f"""
+        ### Filter Designs:
+        - **Baseline Wander Removal**: Dual median filter (200ms and 600ms windows) successfully isolate respiratory baseline drifts.
+        - **Denoising (Bandpass)**: Butterworth 3rd-order digital bandpass filter ($ {settings['lowcut']:.1f} - {settings['highcut']:.1f} $ Hz) applied with zero phase shift.
+        - **Smoothing**: Savitzky-Golay filtering removes muscle tremor artifacts.
         """)
 
-# Tab 3: QRS R-Peak Detector
+# Tab 3: QRS Detector
 with tab_qrs:
-    st.subheader("Pan-Tompkins Algorithm Stage Envelopes")
-    st.write("Detailed extraction of QRS energy envelopes to perform adaptive peak thresholding.")
+    st.subheader("Pan-Tompkins Algorithm Stage Visualizer")
+    st.write("Examine QRS energy envelopes to test derivative-threshold parameters.")
     
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(10, 8.5), sharex=True)
-    fig.patch.set_facecolor('#0A0F1D')
-    
-    # 5s window for clarity
-    p_zoom = t <= 8.0
-    sig_p_zoom = sig_smoothed[p_zoom]
-    t_p_zoom = t[p_zoom]
-    
-    # 1. Bandpass 5-15Hz
-    ax1.plot(t_p_zoom, PT_stages['filtered'][p_zoom], color='#EC407A')
-    ax1.set_title("1. Pan-Tompkins Bandpass Filter (5 - 15 Hz QRS Isolation)", color='#E2E8F0', fontsize=9)
-    ax1.set_facecolor('#0F172A')
-    ax1.tick_params(colors='#E2E8F0')
-    ax1.grid(color='#334155', linestyle=':', linewidth=0.5)
-    
-    # 2. Derivative
-    ax2.plot(t_p_zoom, PT_stages['derived'][p_zoom], color='#AB47BC')
-    ax2.set_title("2. QRS Complex Derivative (highlighting steep slopes)", color='#E2E8F0', fontsize=9)
-    ax2.set_facecolor('#0F172A')
-    ax2.tick_params(colors='#E2E8F0')
-    ax2.grid(color='#334155', linestyle=':', linewidth=0.5)
-    
-    # 3. Squaring
-    ax3.plot(t_p_zoom, PT_stages['squared'][p_zoom], color='#42A5F5')
-    ax3.set_title("3. Squaring Operator (intensifying slopes and forcing absolute positive)", color='#E2E8F0', fontsize=9)
-    ax3.set_facecolor('#0F172A')
-    ax3.tick_params(colors='#E2E8F0')
-    ax3.grid(color='#334155', linestyle=':', linewidth=0.5)
-    
-    # 4. Integration
-    ax4.plot(t_p_zoom, PT_stages['integrated'][p_zoom], color='#26A69A', label='Integrated Envelope')
-    # Plot thresholds
-    spki_line = np.ones_like(t_p_zoom) * np.max(PT_stages['integrated']) * 0.20
-    ax4.plot(t_p_zoom, spki_line, color='#FFCA28', linestyle='--', label='Signal Threshold')
-    
-    # Mark peaks
-    p_peaks = r_peaks[r_peaks < int(8.0 * fs)]
-    ax4.scatter(t[p_peaks], PT_stages['integrated'][p_peaks], color='#D50000', s=35, zorder=5, label='Triggered Peaks')
-    
-    ax4.set_title("4. Moving Window Integration (150ms envelope) & Thresholds", color='#E2E8F0', fontsize=9)
-    ax4.set_xlabel("Time (seconds)", color='#E2E8F0')
-    ax4.set_facecolor('#0F172A')
-    ax4.tick_params(colors='#E2E8F0')
-    ax4.grid(color='#334155', linestyle=':', linewidth=0.5)
-    ax4.legend(facecolor='#1E2937', labelcolor='#E2E8F0', loc='upper right')
-    
-    plt.tight_layout()
-    st.pyplot(fig)
-    plt.close(fig)
+    if res['stages'] is not None:
+        p_zoom = res['t'] <= 8.0
+        t_zoom = res['t'][p_zoom]
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=t_zoom, y=res['stages']['filtered'][p_zoom], name="Bandpass 5-15Hz", line=dict(color="#EC407A")))
+        fig.add_trace(go.Scatter(x=t_zoom, y=res['stages']['derived'][p_zoom], name="Derivative Stage", line=dict(color="#AB47BC")))
+        fig.add_trace(go.Scatter(x=t_zoom, y=res['stages']['squared'][p_zoom], name="Squaring Stage", line=dict(color="#42A5F5")))
+        fig.add_trace(go.Scatter(x=t_zoom, y=res['stages']['integrated'][p_zoom], name="Integrated Envelope", line=dict(color="#26A69A", width=2)))
+        
+        # Overlay peaks
+        z_peaks = res['r_peaks'][res['r_peaks'] < int(8.0 * res['fs'])]
+        fig.add_trace(go.Scatter(x=res['t'][z_peaks], y=res['stages']['integrated'][z_peaks], mode="markers", name="Detected R-Peak", marker=dict(color="#D50000", size=10, symbol="x")))
+        
+        fig.update_layout(
+            title="Intermediate Pan-Tompkins Signal Stages (First 8 seconds)",
+            xaxis_title="Time (seconds)",
+            yaxis_title="Normalized Amplitude",
+            template="plotly_dark",
+            height=480
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning(f"R-peaks detected using {settings['rpeak_method']}. intermediate Pan-Tompkins filter envelopes are only available when the Custom Pan-Tompkins method is selected.")
 
-# Tab 4: Ectopic Correction
+# Tab 4: RR & Ectopic Analysis
 with tab_ectopic:
-    st.subheader("Ectopic Beat Detection & Spline Reconstruction")
-    st.write("Mandatory verification of outlier intervals caused by premature contractions or measurement artifacts.")
+    st.subheader("RR Tachogram & Ectopic Beat Management")
+    st.write("Inspect outliers representing ectopic cardiac contractions.")
     
-    col_ect1, col_ect2 = st.columns([3, 1.2])
-    with col_ect1:
-        # Plot Ectopic comparison
-        fig, ax = plt.subplots(figsize=(10, 4.5))
-        fig.patch.set_facecolor('#0A0F1D')
+    # Plotly Tachogram (Raw vs Corrected)
+    fig = go.Figure()
+    x_idx = np.arange(len(res['rr_intervals']))
+    
+    fig.add_trace(go.Scatter(x=x_idx, y=res['rr_intervals'], name="Raw RR Intervals", line=dict(color="#EF5350", width=1.2, dash="dash"), mode="lines+markers"))
+    
+    if settings['ectopic_corrected']:
+        fig.add_trace(go.Scatter(x=x_idx, y=res['corrected_rr'], name="Corrected RR (Cubic Spline)", line=dict(color="#00E676", width=1.5), mode="lines+markers"))
         
-        x_beats = np.arange(len(rr_intervals))
-        ax.plot(x_beats, rr_intervals, color='#EF5350', alpha=0.5, linestyle='--', marker='o', label='Raw RR Intervals (ms)')
-        ax.plot(x_beats, corrected_rr, color='#26A69A', marker='s', label='Spline Corrected RR (ms)')
+    ect_idx = np.where(res['ectopic_mask'])[0]
+    if len(ect_idx) > 0:
+        fig.add_trace(go.Scatter(x=ect_idx, y=res['rr_intervals'][ect_idx], mode="markers", name="Flagged Ectopics (Outliers)", marker=dict(color="#FF1744", size=10)))
         
-        ect_spots = np.where(ectopic_mask)[0]
-        if len(ect_spots) > 0:
-            ax.scatter(ect_spots, rr_intervals[ect_spots], color='#E91E63', s=60, zorder=5, label='Ectopic Outlier')
-            ax.scatter(ect_spots, corrected_rr[ect_spots], color='#29B6F6', s=60, zorder=5, label='Interpolation Fit')
-            
-        ax.set_xlabel("Cardiac Beat Index", color='#E2E8F0')
-        ax.set_ylabel("Interval duration (ms)", color='#E2E8F0')
-        ax.set_facecolor('#0F172A')
-        ax.tick_params(colors='#E2E8F0')
-        ax.legend(facecolor='#1E2937', labelcolor='#E2E8F0', loc='upper right')
-        ax.grid(color='#334155', linestyle=':', linewidth=0.5)
-        st.pyplot(fig)
-        plt.close(fig)
-        
-    with col_ect2:
-        st.metric("Total Heartbeats Evaluated", time_m['nn50'] + 10) # rough beat count estimate
-        st.metric("Ectopic Count", np.sum(ectopic_mask))
-        st.metric("Correction Percentage", f"{(np.sum(ectopic_mask)/len(rr_intervals)*100.0 if len(rr_intervals) > 0 else 0):.2f} %")
-        
-        st.info("""
-        ### Ectopic Beat Management:
-        - **Detection**: Outliers are identified using a local rolling median filter. An interval is labeled ectopic if it falls outside 20% of the local running median or global limits.
-        - **Correction**: Ectopic values are replaced using Cubic Spline Interpolation over normal neighbors. This avoids step-discontinuities in the signal, maintaining spectral integration accuracy.
-        """)
+    fig.update_layout(
+        xaxis_title="Heartbeat index",
+        yaxis_title="R-R interval (ms)",
+        template="plotly_dark",
+        height=450,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    col_e1, col_e2 = st.columns(2)
+    with col_e1:
+        st.metric("Total Heartbeats", len(res['r_peaks']))
+        st.metric("Ectopics Detected", res['ectopic_stats']['count'])
+    with col_e2:
+        st.metric("Ectopic Burden (%)", f"{res['ectopic_stats']['pct']:.2f} %")
+        st.metric("Correction Interpolation", settings['corr_method'].upper() if settings['ectopic_corrected'] else "DISABLED")
 
-# Tab 5: HRV Analytics
-with tab_hrv:
-    st.subheader("Autonomic Nervous System Diagnostic Lab")
+# Tab 5: Time-Domain HRV
+with tab_hrv_time:
+    st.subheader("Time-Domain HRV Parameters")
     
-    # Render three cards for time, frequency, and nonlinear metrics
+    # Grid of Metric Cards
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Mean RR Interval", f"{res['time_m']['mean_rr']:.1f} ms")
+    c2.metric("Mean Heart Rate", f"{res['time_m']['mean_hr']:.1f} BPM")
+    c3.metric("SDNN (Overall HRV)", f"{res['time_m']['sdnn']:.1f} ms")
+    c4.metric("RMSSD (Vagal Tone)", f"{res['time_m']['rmssd']:.1f} ms")
+    c5.metric("pNN50 (RSA Load)", f"{res['time_m']['pnn50']:.2f} %")
+    
+    st.markdown("---")
+    
+    # RR Interval Distribution Histogram (Plotly)
+    fig = px.histogram(
+        x=res['corrected_rr'], 
+        nbins=20,
+        title="R-R Interval Probability Distribution Histogram",
+        labels={'x': 'RR Interval (ms)'},
+        color_discrete_sequence=['#00ACC1'],
+        template="plotly_dark"
+    )
+    fig.update_layout(yaxis_title="Frequency Count", height=380)
+    st.plotly_chart(fig, use_container_width=True)
+
+# Tab 6: Frequency-Domain HRV
+with tab_hrv_freq:
+    st.subheader("Frequency-Domain Autonomic Assessment")
+    
     c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown("<h4 style='color:#66BB6A;'>Time-Domain Features</h4>", unsafe_allow_html=True)
-        st.write(f"**Mean RR Interval**: {time_m['mean_rr']:.1f} ms")
-        st.write(f"**Mean Heart Rate**: {time_m['mean_hr']:.1f} BPM")
-        st.write(f"**SDNN (Overall HRV)**: {time_m['sdnn']:.1f} ms")
-        st.write(f"**RMSSD (Vagal Tone)**: {time_m['rmssd']:.1f} ms")
-        st.write(f"**pNN50 (RSA load)**: {time_m['pnn50']:.2f} %")
-        
-    with c2:
-        st.markdown("<h4 style='color:#42A5F5;'>Frequency-Domain Features</h4>", unsafe_allow_html=True)
-        st.write(f"**LF Power (Sympathetic/Vagal)**: {freq_m['lf']:.1f} ms²")
-        st.write(f"**HF Power (Pure Vagal)**: {freq_m['hf']:.1f} ms²")
-        st.write(f"**LF Norm Power**: {freq_m['lf_nu']:.1f} nu")
-        st.write(f"**HF Norm Power**: {freq_m['hf_nu']:.1f} nu")
-        st.write(f"**LF/HF Ratio (Autonomic Balance)**: {freq_m['ratio']:.3f}")
-        
-    with c3:
-        st.markdown("<h4 style='color:#AB47BC;'>Non-Linear Parameters</h4>", unsafe_allow_html=True)
-        st.write(f"**SD1 (Short-term fluctuation)**: {nonl_m['sd1']:.1f} ms")
-        st.write(f"**SD2 (Long-term fluctuation)**: {nonl_m['sd2']:.1f} ms")
-        st.write(f"**SD1/SD2 Ratio**: {nonl_m['ratio']:.3f}")
-        st.write(f"**Sample Entropy (Complexity)**: {nonl_m['sampen']:.4f}")
-
-    # Plot spectral density & poincare side by side
-    col_plt1, col_plt2 = st.columns(2)
-    with col_plt1:
-        st.subheader("Frequency PSD Welch Periodogram")
-        fig, ax = plt.subplots(figsize=(6, 3.5))
-        fig.patch.set_facecolor('#0A0F1D')
-        
-        f = freq_m['psd_f']
-        pxx = freq_m['psd_p']
-        if len(f) > 0:
-            ax.plot(f, pxx, color='#26A69A', linewidth=1.5)
-            # Shade LF
-            lf_idx = (f >= 0.04) & (f < 0.15)
-            ax.fill_between(f[lf_idx], pxx[lf_idx], color='#FF7043', alpha=0.4, label='LF Sympathovagal')
-            # Shade HF
-            hf_idx = (f >= 0.15) & (f <= 0.40)
-            ax.fill_between(f[hf_idx], pxx[hf_idx], color='#29B6F6', alpha=0.4, label='HF Parasympathetic')
-            
-            ax.set_xlim(0, 0.5)
-            ax.set_xlabel("Frequency (Hz)", color='#E2E8F0')
-            ax.set_ylabel("Power Density (ms²/Hz)", color='#E2E8F0')
-            ax.tick_params(colors='#E2E8F0')
-            ax.grid(color='#334155', linestyle=':', linewidth=0.5)
-            ax.legend(facecolor='#1E2937', labelcolor='#E2E8F0', loc='upper right')
-        ax.set_facecolor('#0F172A')
-        st.pyplot(fig)
-        plt.close(fig)
-        
-    with col_plt2:
-        st.subheader("Poincaré Nonlinear Dynamics")
-        fig, ax = plt.subplots(figsize=(4.5, 3.5))
-        fig.patch.set_facecolor('#0A0F1D')
-        
-        if len(corrected_rr) > 2:
-            x_p = corrected_rr[:-1]
-            y_p = corrected_rr[1:]
-            ax.scatter(x_p, y_p, color='#29B6F6', alpha=0.6, s=15, edgecolors='none')
-            
-            min_val = min(np.min(x_p), np.min(y_p)) - 50
-            max_val = max(np.max(x_p), np.max(y_p)) + 50
-            ax.plot([min_val, max_val], [min_val, max_val], color='#EF5350', linestyle='--', label='y = x Identity')
-            
-            # Draw ellipse axes
-            mean_x = np.mean(x_p)
-            mean_y = np.mean(y_p)
-            sd1 = nonl_m['sd1']
-            sd2 = nonl_m['sd2']
-            angle = np.pi / 4
-            ax.plot([mean_x - sd1 * np.sin(angle), mean_x + sd1 * np.sin(angle)],
-                    [mean_y + sd1 * np.cos(angle), mean_y - sd1 * np.cos(angle)],
-                    color='#FF7043', linewidth=2.0, label='SD1 (Vagal)')
-            ax.plot([mean_x - sd2 * np.cos(angle), mean_x + sd2 * np.cos(angle)],
-                    [mean_y - sd2 * np.sin(angle), mean_y + sd2 * np.sin(angle)],
-                    color='#66BB6A', linewidth=2.0, label='SD2 (Symp+Vagal)')
-            
-            ax.set_xlim(min_val, max_val)
-            ax.set_ylim(min_val, max_val)
-            ax.set_xlabel("RR\u2093 (ms)", color='#E2E8F0')
-            ax.set_ylabel("RR\u2093\u208A\u2081 (ms)", color='#E2E8F0')
-            ax.tick_params(colors='#E2E8F0')
-            ax.grid(color='#334155', linestyle=':', linewidth=0.5)
-            ax.legend(facecolor='#1E2937', labelcolor='#E2E8F0', loc='lower right')
-        ax.set_facecolor('#0F172A')
-        st.pyplot(fig)
-        plt.close(fig)
-
-    st.subheader("Physiological Interpretation & Discussion")
-    st.markdown(interpretation)
-
-# Tab 6: Report Compiler
-with tab_report:
-    st.subheader("Automated Academic Lab Report Compiler")
-    st.write("Generate and download professional, publication-quality lab reports satisfying the criteria for OEL CLO1 and CLO2.")
+    c1.metric("LF Power (Sympathovagal)", f"{res['freq_m']['lf']:.1f} ms²")
+    c2.metric("HF Power (Pure Vagal)", f"{res['freq_m']['hf']:.1f} ms²")
+    c3.metric("LF/HF Ratio (Autonomic Balance)", f"{res['freq_m']['ratio']:.3f}")
     
-    st.markdown("""
-    This section compiles all of the graphs generated above directly into two formats:
-    - **PDF File**: Using `reportlab`, complete with title page, equations, results tables, discussion, and captioned figures.
-    - **Microsoft Word Document (.docx)**: Fully formatted and editable.
+    st.markdown("---")
+    
+    # Plotly PSD Welch with Shaded bands
+    f = res['freq_m']['psd_f']
+    pxx = res['freq_m']['psd_p']
+    
+    fig = go.Figure()
+    if len(f) > 0:
+        fig.add_trace(go.Scatter(x=f, y=pxx, name="PSD Curve", line=dict(color="#AA00FF", width=2)))
+        
+        # Shade VLF
+        vlf_mask = (f >= 0.00) & (f < 0.04)
+        fig.add_trace(go.Scatter(x=f[vlf_mask], y=pxx[vlf_mask], fill='tozeroy', name="VLF", fillcolor="rgba(189, 189, 189, 0.3)", line=dict(color="rgba(0,0,0,0)")))
+        
+        # Shade LF
+        lf_mask = (f >= 0.04) & (f < 0.15)
+        fig.add_trace(go.Scatter(x=f[lf_mask], y=pxx[lf_mask], fill='tozeroy', name="LF Sympathovagal", fillcolor="rgba(255, 112, 67, 0.4)", line=dict(color="rgba(0,0,0,0)")))
+        
+        # Shade HF
+        hf_mask = (f >= 0.15) & (f <= 0.40)
+        fig.add_trace(go.Scatter(x=f[hf_mask], y=pxx[hf_mask], fill='tozeroy', name="HF Parasympathetic", fillcolor="rgba(38, 166, 154, 0.4)", line=dict(color="rgba(0,0,0,0)")))
+        
+        fig.update_layout(
+            xaxis_range=[0, 0.5],
+            xaxis_title="Frequency (Hz)",
+            yaxis_title="Power Spectral Density (ms²/Hz)",
+            template="plotly_dark",
+            height=400,
+            margin=dict(l=20, r=20, t=30, b=20)
+        )
+    st.plotly_chart(fig, use_container_width=True)
+
+# Tab 7: Non-Linear Analysis
+with tab_hrv_nonl:
+    st.subheader("Non-Linear Poincaré & Complexity Dynamics")
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Poincaré SD1 (Vagal)", f"{res['nonl_m']['sd1']:.1f} ms")
+    c2.metric("Poincaré SD2 (Symp/Vagal)", f"{res['nonl_m']['sd2']:.1f} ms")
+    c3.metric("Sample Entropy (Complexity)", f"{res['nonl_m']['sampen']:.4f}")
+    
+    st.markdown("---")
+    
+    # Plotly Poincaré Scatter with SD1/SD2 Axes
+    x_p = res['corrected_rr'][:-1]
+    y_p = res['corrected_rr'][1:]
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=x_p, y=y_p, mode="markers", name="RR Pairs", marker=dict(color="#29B6F6", size=6, opacity=0.7)))
+    
+    min_val = min(x_p.min(), y_p.min()) - 50
+    max_val = max(x_p.max(), y_p.max()) + 50
+    fig.add_trace(go.Scatter(x=[min_val, max_val], y=[min_val, max_val], line=dict(color="#EF5350", dash="dash"), name="Line of Identity (y = x)"))
+    
+    # Plot SD1/SD2 lines
+    mean_x = np.mean(x_p)
+    mean_y = np.mean(y_p)
+    sd1 = res['nonl_m']['sd1']
+    sd2 = res['nonl_m']['sd2']
+    angle = np.pi / 4
+    
+    fig.add_trace(go.Scatter(x=[mean_x - sd1 * np.sin(angle), mean_x + sd1 * np.sin(angle)],
+                             y=[mean_y + sd1 * np.cos(angle), mean_y - sd1 * np.cos(angle)],
+                             line=dict(color="#FF7043", width=3), name=f"SD1: {sd1:.1f} ms"))
+                             
+    fig.add_trace(go.Scatter(x=[mean_x - sd2 * np.cos(angle), mean_x + sd2 * np.cos(angle)],
+                             y=[mean_y - sd2 * np.sin(angle), mean_y + sd2 * np.sin(angle)],
+                             line=dict(color="#66BB6A", width=3), name=f"SD2: {sd2:.1f} ms"))
+                             
+    fig.update_layout(
+        xaxis_title="RR_n (ms)",
+        yaxis_title="RR_n+1 (ms)",
+        template="plotly_dark",
+        height=450,
+        width=550,
+        margin=dict(l=20, r=20, t=30, b=20)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# Tab 8: Report Desk
+with tab_report:
+    st.subheader("Academic Report Compiler")
+    st.write("Generate and download comprehensive PDF/DOCX templates compiling clinical analysis details and figures.")
+    
+    # Settings panel summary printout
+    st.subheader("Selected Settings Summary")
+    st.code(f"""
+Student Name:      {student_name}
+Student ID:        {student_id}
+Lab Supervisor:    {supervisor_name}
+R-peak Algorithm:  {settings['rpeak_method']}
+Ectopic Handling:  {"ENABLED (" + settings['corr_method'] + ")" if settings['ectopic_corrected'] else "DISABLED"}
+Welch PSD Setup:   Window: {settings['welch_win_sec']}s, Overlap: {settings['welch_overlap_pct']}%
+Filter Cutoffs:    Low cut: {settings['lowcut']}Hz, High cut: {settings['highcut']}Hz
     """)
     
-    if st.button("Compile Reports (Generates Figures & Documents)"):
-        with st.spinner("Generating Matplotlib plots and writing document files..."):
+    if st.button("Compile Academic Reports"):
+        with st.spinner("Generating plots and compiling report templates..."):
             student_info = {
                 'name': student_name,
                 'id': student_id,
                 'supervisor': supervisor_name
             }
             
-            # Temporary directory to save plots
-            plots_dir = "streamlit_plots"
+            # Temporary directory to write matplotlib static figures
+            plots_dir = "temp_report_plots"
             if os.path.exists(plots_dir):
                 shutil.rmtree(plots_dir)
             os.makedirs(plots_dir)
             
-            # Generate plots
-            plot_paths = reporter.generate_all_plots(
-                t=t,
-                raw_sig=sig,
-                filtered_sig=sig_smoothed,
-                r_peaks=r_peaks,
-                rr_raw=rr_intervals,
-                rr_corrected=corrected_rr,
-                ectopic_mask=ectopic_mask,
-                psd_data=freq_m,
-                output_dir=plots_dir
-            )
-            
-            ectopic_stats = {
-                'count': int(np.sum(ectopic_mask)),
-                'total_beats': int(len(r_peaks)),
-                'pct': (np.sum(ectopic_mask)/len(rr_intervals)*100.0 if len(rr_intervals) > 0 else 0.0)
-            }
-            
-            pdf_path = "ECG_HRV_Lab_Report.pdf"
-            docx_path = "ECG_HRV_Lab_Report.docx"
-            
-            # Generate reports
-            reporter.generate_pdf(pdf_path, student_info, time_m, freq_m, nonl_m, ectopic_stats, plot_paths, interpretation)
-            reporter.generate_docx(docx_path, student_info, time_m, freq_m, nonl_m, ectopic_stats, plot_paths, interpretation)
-            
-            st.success("🎉 Reports successfully compiled!")
-            
-            # Offer downloads
-            with open(pdf_path, "rb") as pdf_file:
-                st.download_button(
-                    label="📥 Download Academic PDF Report",
-                    data=pdf_file,
-                    file_name=f"ECG_HRV_Report_{student_id}.pdf",
-                    mime="application/pdf"
+            # Single file compiler
+            if len(sig_files) == 1 or data_source == "Synthetic Generator":
+                # Generate plots
+                plot_paths = reporter.generate_all_plots(
+                    t=res['t'],
+                    raw_sig=res['sig'],
+                    filtered_sig=res['sig_smoothed'],
+                    r_peaks=res['r_peaks'],
+                    rr_raw=res['rr_intervals'],
+                    rr_corrected=res['corrected_rr'],
+                    ectopic_mask=res['ectopic_mask'],
+                    psd_data=res['freq_m'],
+                    output_dir=plots_dir
                 )
                 
-            with open(docx_path, "rb") as docx_file:
-                st.download_button(
-                    label="📥 Download Editable Word (.docx) Report",
-                    data=docx_file,
-                    file_name=f"ECG_HRV_Report_{student_id}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                pdf_path = f"ECG_HRV_Report_{student_id}.pdf"
+                docx_path = f"ECG_HRV_Report_{student_id}.docx"
+                
+                reporter.generate_pdf(
+                    pdf_path=pdf_path,
+                    student_info=student_info,
+                    time_metrics=res['time_m'],
+                    freq_metrics=res['freq_m'],
+                    nonlinear_metrics=res['nonl_m'],
+                    ectopic_stats=res['ectopic_stats'],
+                    plot_paths=plot_paths,
+                    interpretation_text=res['interpretation'],
+                    settings=settings
                 )
                 
-            # Clean up temporary plots directory
+                reporter.generate_docx(
+                    docx_path=docx_path,
+                    student_info=student_info,
+                    time_metrics=res['time_m'],
+                    freq_metrics=res['freq_m'],
+                    nonlinear_metrics=res['nonl_m'],
+                    ectopic_stats=res['ectopic_stats'],
+                    plot_paths=plot_paths,
+                    interpretation_text=res['interpretation'],
+                    settings=settings
+                )
+                
+                st.success("Reports successfully compiled!")
+                
+                with open(pdf_path, "rb") as pdf_file:
+                    st.download_button("📥 Download Academic PDF Report", pdf_file, file_name=pdf_path, mime="application/pdf")
+                    
+                with open(docx_path, "rb") as docx_file:
+                    st.download_button("📥 Download Editable DOCX Report", docx_file, file_name=docx_path, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            
+            else:
+                # Multi-file batch compilation
+                zip_filename = f"ECG_HRV_Batch_Reports_{student_id}.zip"
+                with zipfile.ZipFile(zip_filename, 'w') as zip_f:
+                    for s in sig_files:
+                        st.write(f"Compiling reports for: {s['name']}...")
+                        s_res = process_record(s, settings)
+                        
+                        s_plots_dir = os.path.join(plots_dir, s['name'].replace('.','_'))
+                        s_plot_paths = reporter.generate_all_plots(
+                            t=s_res['t'],
+                            raw_sig=s_res['sig'],
+                            filtered_sig=s_res['sig_smoothed'],
+                            r_peaks=s_res['r_peaks'],
+                            rr_raw=s_res['rr_intervals'],
+                            rr_corrected=s_res['corrected_rr'],
+                            ectopic_mask=s_res['ectopic_mask'],
+                            psd_data=s_res['freq_m'],
+                            output_dir=s_plots_dir
+                        )
+                        
+                        s_pdf = f"ECG_HRV_Report_{os.path.splitext(s['name'])[0]}.pdf"
+                        s_docx = f"ECG_HRV_Report_{os.path.splitext(s['name'])[0]}.docx"
+                        
+                        reporter.generate_pdf(
+                            pdf_path=s_pdf,
+                            student_info=student_info,
+                            time_metrics=s_res['time_m'],
+                            freq_metrics=s_res['freq_m'],
+                            nonlinear_metrics=s_res['nonl_m'],
+                            ectopic_stats=s_res['ectopic_stats'],
+                            plot_paths=s_plot_paths,
+                            interpretation_text=s_res['interpretation'],
+                            settings=settings
+                        )
+                        
+                        reporter.generate_docx(
+                            docx_path=s_docx,
+                            student_info=student_info,
+                            time_metrics=s_res['time_m'],
+                            freq_metrics=s_res['freq_m'],
+                            nonlinear_metrics=s_res['nonl_m'],
+                            ectopic_stats=s_res['ectopic_stats'],
+                            plot_paths=s_plot_paths,
+                            interpretation_text=s_res['interpretation'],
+                            settings=settings
+                        )
+                        
+                        zip_f.write(s_pdf)
+                        zip_f.write(s_docx)
+                        
+                        # Clean temp local files after zipping
+                        os.remove(s_pdf)
+                        os.remove(s_docx)
+                        
+                st.success("Batch processing complete! Zip archive compiled.")
+                with open(zip_filename, "rb") as z_file:
+                    st.download_button("📥 Download All Reports (ZIP Archive)", z_file, file_name=zip_filename, mime="application/zip")
+                    
+            # Clean up matplotlib plots
             if os.path.exists(plots_dir):
                 shutil.rmtree(plots_dir)

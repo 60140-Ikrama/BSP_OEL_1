@@ -121,7 +121,7 @@ class HRVAnalyzer:
             'pnn50': pnn50
         }
 
-    def compute_frequency_domain(self, rr_intervals, resampling_fs=4.0):
+    def compute_frequency_domain(self, rr_intervals, resampling_fs=4.0, welch_win_sec=64, welch_overlap_pct=50):
         """
         Calculates Frequency-Domain HRV features using Welch's PSD.
         Steps:
@@ -155,9 +155,14 @@ class HRVAnalyzer:
         rr_detrended = rr_resampled - np.mean(rr_resampled)
         
         # Compute Welch PSD
-        # Window size is chosen to resolve low frequency components (e.g. 256 or 512 points)
-        nperseg = min(256, len(rr_detrended))
-        f, pxx = welch(rr_detrended, fs=resampling_fs, nperseg=nperseg, scaling='density')
+        nperseg = int(welch_win_sec * resampling_fs)
+        if nperseg > len(rr_detrended):
+            nperseg = len(rr_detrended)
+        noverlap = int(nperseg * (welch_overlap_pct / 100.0))
+        if noverlap >= nperseg:
+            noverlap = nperseg - 1
+            
+        f, pxx = welch(rr_detrended, fs=resampling_fs, nperseg=nperseg, noverlap=noverlap, scaling='density')
         
         # Integrate power in bands using custom trapezoidal integration for NumPy 2.0+ compatibility
         def trapz(y, x):

@@ -206,10 +206,25 @@ class ReportGenerator:
 
         return paths
 
-    def generate_pdf(self, pdf_path, student_info, time_metrics, freq_metrics, nonlinear_metrics, ectopic_stats, plot_paths, interpretation_text):
+    def generate_pdf(self, pdf_path, student_info, time_metrics, freq_metrics, nonlinear_metrics, ectopic_stats, plot_paths, interpretation_text, settings=None):
         """
         Compiles the academic lab report PDF using ReportLab with custom styling and formatting.
         """
+        if settings is None:
+            settings = {
+                'rpeak_method': 'Pan-Tompkins (Custom)',
+                'ectopic_corrected': True,
+                'lowcut': 0.5,
+                'highcut': 45.0,
+                'welch_win_sec': 64,
+                'welch_overlap_pct': 50
+            }
+            
+        rpeak_method = settings.get('rpeak_method', 'Pan-Tompkins (Custom)')
+        ectopic_corrected = settings.get('ectopic_corrected', True)
+        lowcut = settings.get('lowcut', 0.5)
+        highcut = settings.get('highcut', 45.0)
+
         doc = SimpleDocTemplate(
             pdf_path,
             pagesize=letter,
@@ -345,15 +360,16 @@ class ReportGenerator:
             "First, a 200 ms window (removing high-amplitude QRS complexes and T-waves) passes over the ECG. "
             "Next, a 600 ms window filters the output to eliminate P-waves. This isolates the baseline wander, which is subtracted from the raw signal. "
             "Unlike linear IIR filters, median filtering introduces zero phase delay and leaves QRS wave amplitudes unmodified.<br/><br/>"
-            "<b>3.2 P-QRS-T Noise Suppression (Butterworth Bandpass)</b><br/>"
-            "To capture ECG waves, a 3rd-order Butterworth bandpass filter is designed with a passband of 0.5 to 45.0 Hz. "
+            f"<b>3.2 P-QRS-T Noise Suppression (Butterworth Bandpass)</b><br/>"
+            f"To capture ECG waves, a 3rd-order Butterworth bandpass filter is designed with a passband of {lowcut:.1f} to {highcut:.1f} Hz. "
             "This band suppresses low-frequency breathing drifts and high-frequency 50/60 Hz powerline interference. "
             "It is applied using double-pass filtering (<code>scipy.signal.filtfilt</code>), enforcing zero phase shift to prevent shifting QRS peaks in time.<br/><br/>"
-            "<b>3.3 Moving Enveloping (Pan-Tompkins Algorithm)</b><br/>"
-            "The Pan-Tompkins algorithm isolates QRS complexes using a derivative stage, a squaring operation, and a moving window integrator (150ms window size). "
+            f"<b>3.3 Moving Enveloping and QRS R-Peak Detection ({rpeak_method})</b><br/>"
+            f"QRS detection was performed using the <b>{rpeak_method}</b> method. "
+            "For Pan-Tompkins, the algorithm isolates QRS complexes using a derivative stage, a squaring operation, and a moving window integrator (150ms window size). "
             "This integration tracks the energy envelope of the QRS complex. R-peaks are identified using adaptive dual thresholds: "
             "the signal threshold adapts to standard beat heights while the noise threshold adjusts to muscular baseline tremors. "
-            "Refractory constraints (200ms lock-out) prevent T-wave double-triggering, and a back-search threshold scans back if beats are skipped.",
+            "For NeuroKit2 methods, robust peak alignment and thresholding are applied to extract exact peak indices.",
             body_style
         ))
         
@@ -400,11 +416,13 @@ class ReportGenerator:
         story.append(Paragraph("5. Extracted HRV Parameters & Clinical Metrics", h1_style))
         
         # Ectopic Stats Summary
-        story.append(Paragraph(
-            f"<b>Ectopic Correction Audit:</b> Detected {ectopic_stats['count']} ectopic events out of {ectopic_stats['total_beats']} total beats "
-            f"({ectopic_stats['pct']:.2f}% ectopic burden). Ectopic intervals were reconstructed using cubic spline interpolation.",
-            body_style
-        ))
+        if ectopic_corrected:
+            ect_text = (f"<b>Ectopic Correction Audit:</b> Detected {ectopic_stats['count']} ectopic events out of {ectopic_stats['total_beats']} total beats "
+                        f"({ectopic_stats['pct']:.2f}% ectopic burden). Ectopic intervals were reconstructed using cubic spline interpolation.")
+        else:
+            ect_text = (f"<b>Ectopic Correction Audit:</b> Detected {ectopic_stats['count']} ectopic events out of {ectopic_stats['total_beats']} total beats "
+                        f"({ectopic_stats['pct']:.2f}% ectopic burden). Ectopic correction was <b>DISABLED</b>; raw RR intervals were used directly.")
+        story.append(Paragraph(ect_text, body_style))
         
         # Table data
         hdr_style = table_hdr_style
@@ -470,10 +488,25 @@ class ReportGenerator:
         # Build PDF
         doc.build(story)
 
-    def generate_docx(self, docx_path, student_info, time_metrics, freq_metrics, nonlinear_metrics, ectopic_stats, plot_paths, interpretation_text):
+    def generate_docx(self, docx_path, student_info, time_metrics, freq_metrics, nonlinear_metrics, ectopic_stats, plot_paths, interpretation_text, settings=None):
         """
         Compiles the academic lab report as an editable Word Document (.docx) using python-docx.
         """
+        if settings is None:
+            settings = {
+                'rpeak_method': 'Pan-Tompkins (Custom)',
+                'ectopic_corrected': True,
+                'lowcut': 0.5,
+                'highcut': 45.0,
+                'welch_win_sec': 64,
+                'welch_overlap_pct': 50
+            }
+            
+        rpeak_method = settings.get('rpeak_method', 'Pan-Tompkins (Custom)')
+        ectopic_corrected = settings.get('ectopic_corrected', True)
+        lowcut = settings.get('lowcut', 0.5)
+        highcut = settings.get('highcut', 45.0)
+
         doc = Document()
         
         # Styles Setup
@@ -545,14 +578,15 @@ class ReportGenerator:
             "Baseline drift (0.1-0.5 Hz) caused by respiration is non-linearly tracked using a dual median filter. "
             "First, a 200 ms window (removing high-amplitude QRS complexes and T-waves) passes over the ECG. "
             "Next, a 600 ms window filters the output to eliminate P-waves. This isolates the baseline wander, which is subtracted from the raw signal.\n\n"
-            "3.2 P-QRS-T Noise Suppression (Butterworth Bandpass)\n"
-            "To capture ECG waves, a 3rd-order Butterworth bandpass filter is designed with a passband of 0.5 to 45.0 Hz. "
+            f"3.2 P-QRS-T Noise Suppression (Butterworth Bandpass)\n"
+            f"To capture ECG waves, a 3rd-order Butterworth bandpass filter is designed with a passband of {lowcut:.1f} to {highcut:.1f} Hz. "
             "This band suppresses low-frequency breathing drifts and high-frequency 50/60 Hz powerline interference. "
             "It is applied using double-pass filtering (scipy.signal.filtfilt), enforcing zero phase shift to prevent shifting QRS peaks in time.\n\n"
-            "3.3 Moving Enveloping (Pan-Tompkins Algorithm)\n"
-            "The Pan-Tompkins algorithm isolates QRS complexes using a derivative stage, a squaring operation, and a moving window integrator (150ms window size). "
-            "This integration tracks the energy envelope of the QRS complex. R-peaks are identified using adaptive dual thresholds: "
-            "the signal threshold adapts to standard beat heights while the noise threshold adjusts to muscular baseline tremors."
+            f"3.3 QRS R-Peak Detection Method ({rpeak_method})\n"
+            f"R-peak extraction is executed using the '{rpeak_method}' algorithm. "
+            "The Pan-Tompkins method isolates QRS complexes using a derivative stage, a squaring operation, and a moving window integrator (150ms window size), "
+            "applying adaptive dual-thresholding with back-search and refractory checks. "
+            "Alternative NeuroKit2 detectors apply advanced mathematical filtering and adaptive peak profiling to locate complexes."
         )
 
         # Figures
@@ -578,10 +612,13 @@ class ReportGenerator:
 
         # Table
         add_section_header("5. Extracted HRV Parameters & Clinical Metrics")
-        doc.add_paragraph(
-            f"Ectopic Correction Audit: Detected {ectopic_stats['count']} ectopic events out of {ectopic_stats['total_beats']} total beats "
-            f"({ectopic_stats['pct']:.2f}% ectopic burden). Ectopic intervals were reconstructed using cubic spline interpolation."
-        )
+        if ectopic_corrected:
+            ect_text = (f"Ectopic Correction Audit: Detected {ectopic_stats['count']} ectopic events out of {ectopic_stats['total_beats']} total beats "
+                        f"({ectopic_stats['pct']:.2f}% ectopic burden). Ectopic intervals were reconstructed using cubic spline interpolation.")
+        else:
+            ect_text = (f"Ectopic Correction Audit: Detected {ectopic_stats['count']} ectopic events out of {ectopic_stats['total_beats']} total beats "
+                        f"({ectopic_stats['pct']:.2f}% ectopic burden). Ectopic correction was DISABLED; raw RR intervals were used directly.")
+        doc.add_paragraph(ect_text)
 
         table_data = [
             ["HRV Parameter", "Value", "Clinical Reference Range", "Physiological Significance"],
