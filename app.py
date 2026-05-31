@@ -698,13 +698,11 @@ with tab_report:
     
     st.markdown("---")
     st.markdown("### 🛡️ Laboratory & Academic Information")
-    col_s1, col_s2, col_s3 = st.columns(3)
+    col_s1, col_s2 = st.columns(2)
     with col_s1:
         student_name = st.text_input("Student Name", "Biomedical Student")
     with col_s2:
         student_id = st.text_input("Roll / Registration ID", "BME-2026-09")
-    with col_s3:
-        supervisor_name = st.text_input("Lab Supervisor", "Dr. Eleanor Vance")
         
     st.markdown("---")
     
@@ -713,7 +711,6 @@ with tab_report:
     st.code(f"""
 Student Name:      {student_name}
 Student ID:        {student_id}
-Lab Supervisor:    {supervisor_name}
 R-peak Algorithm:  {settings['rpeak_method']}
 Ectopic Handling:  {"ENABLED (" + settings['corr_method'] + ")" if settings['ectopic_corrected'] else "DISABLED"}
 Welch PSD Setup:   Window: {settings['welch_win_sec']}s, Overlap: {settings['welch_overlap_pct']}%
@@ -724,8 +721,7 @@ Filter Cutoffs:    Low cut: {settings['lowcut']}Hz, High cut: {settings['highcut
         with st.spinner("Generating plots and compiling report templates..."):
             student_info = {
                 'name': student_name,
-                'id': student_id,
-                'supervisor': supervisor_name
+                'id': student_id
             }
             
             # Temporary directory to write matplotlib static figures

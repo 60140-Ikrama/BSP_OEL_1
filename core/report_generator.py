@@ -310,24 +310,66 @@ class ReportGenerator:
 
         story = []
 
-        # --- TITLE PAGE ---
-        story.append(Spacer(1, 20))
-        story.append(Paragraph("OPEN ENDED LAB (OEL) REPORT: CLO1 & CLO2", title_style))
-        story.append(Paragraph("ECG Biomedical Signal Processing & Heart Rate Variability (HRV) Analysis System", ParagraphStyle('SubTitle', parent=title_style, fontSize=12, leading=15, textColor=colors.HexColor('#455A64'), spaceAfter=20)))
+        # --- TITLE PAGE HEADER BANNER ---
+        story.append(Spacer(1, 10))
+        header_title_style = ParagraphStyle(
+            'HeaderTitle',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=13,
+            leading=16,
+            textColor=colors.white,
+            alignment=0 # Left
+        )
+        header_date_style = ParagraphStyle(
+            'HeaderDate',
+            parent=styles['Normal'],
+            fontName='Helvetica-Bold',
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor('#38BDF8'),
+            alignment=2 # Right
+        )
         
-        # Student and Class Information Block
+        header_data = [
+            [Paragraph("<b>OPEN ENDED LAB (OEL) REPORT: CLO1 & CLO2 Compliance</b>", header_title_style),
+             Paragraph("<b>Date:</b> May 31, 2026", header_date_style)]
+        ]
+        header_table = Table(header_data, colWidths=[5.4*inch, 2.1*inch])
+        header_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#0F172A')), # Dark slate background
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('LEFTPADDING', (0,0), (-1,-1), 12),
+            ('RIGHTPADDING', (0,0), (-1,-1), 12),
+        ]))
+        story.append(header_table)
+        
+        # Subtitle right under the banner
+        story.append(Spacer(1, 6))
+        story.append(Paragraph("ECG Biomedical Signal Processing & Heart Rate Variability (HRV) Analysis System", 
+                               ParagraphStyle('SubTitle', parent=title_style, fontSize=11, leading=14, textColor=colors.HexColor('#0284C7'), alignment=0, spaceAfter=12)))
+        
+        # Student and Class Information Boxed Grid
         info_data = [
-            [Paragraph("<b>Course Title:</b> Biomedical Signal Processing", body_style), Paragraph(f"<b>Student Name:</b> {student_info.get('name', 'N/A')}", body_style)],
-            [Paragraph("<b>Lab Task:</b> Open-Ended Lab Evaluation", body_style), Paragraph(f"<b>Roll/ID Number:</b> {student_info.get('id', 'N/A')}", body_style)],
-            [Paragraph("<b>Department:</b> Biomedical Engineering", body_style), Paragraph(f"<b>Supervisor:</b> {student_info.get('supervisor', 'N/A')}", body_style)],
-            [Paragraph("<b>Date of Experiment:</b> May 31, 2026", body_style), Paragraph(f"<b>Evaluation Score:</b> ______ / ______", body_style)]
+            [Paragraph("<b>Course Title:</b> Biomedical Signal Processing", body_style), 
+             Paragraph(f"<b>Student Name:</b> {student_info.get('name', 'N/A')}", body_style)],
+            [Paragraph("<b>Lab Task:</b> Open-Ended Lab Evaluation", body_style), 
+             Paragraph(f"<b>Roll/ID Number:</b> {student_info.get('id', 'N/A')}", body_style)],
+            [Paragraph("<b>Department:</b> Biomedical Engineering", body_style), 
+             Paragraph("<b>Evaluation Score:</b> ______ / ______", body_style)]
         ]
         info_table = Table(info_data, colWidths=[3.75*inch, 3.75*inch])
         info_table.setStyle(TableStyle([
-            ('VALIGN', (0,0), (-1,-1), 'TOP'),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-            ('TOPPADDING', (0,0), (-1,-1), 2),
-            ('LINEBELOW', (0,-1), (-1,-1), 1, colors.HexColor('#B0BEC5')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('LEFTPADDING', (0,0), (-1,-1), 10),
+            ('RIGHTPADDING', (0,0), (-1,-1), 10),
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F8FAFC')), # Slate-50 background
+            ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#E2E8F0')),      # Slate-200 border
+            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
         ]))
         story.append(info_table)
         story.append(Spacer(1, 15))
@@ -525,26 +567,45 @@ class ReportGenerator:
 
         # Title
         title = doc.add_paragraph()
-        title_run = title.add_run("OPEN ENDED LAB (OEL) REPORT: CLO1 & CLO2")
-        title_run.font.size = Pt(16)
+        title_run = title.add_run("OPEN ENDED LAB (OEL) REPORT: CLO1 & CLO2 Compliance")
+        title_run.font.size = Pt(17)
         title_run.font.bold = True
-        title_run.font.color.rgb = RGBColor(0x0D, 0x47, 0xA1)
+        title_run.font.color.rgb = RGBColor(0x0F, 0x17, 0x2A) # Slate-900
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
         subtitle = doc.add_paragraph()
         subtitle_run = subtitle.add_run("ECG Signal Processing & Heart Rate Variability (HRV) Analysis System")
         subtitle_run.font.size = Pt(11)
         subtitle_run.font.italic = True
-        subtitle_run.font.color.rgb = RGBColor(0x45, 0x5A, 0x64)
+        subtitle_run.font.color.rgb = RGBColor(0x02, 0x84, 0xC7) # Sky-600
         subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        # Student Block
-        doc.add_paragraph("-----------------------------------------------------------------------------------------------------------------------------")
-        doc.add_paragraph(f"Course Title: Biomedical Signal Processing      |   Student Name: {student_info.get('name', 'N/A')}")
-        doc.add_paragraph(f"Lab Task: Open-Ended Lab Evaluation             |   Roll/ID Number: {student_info.get('id', 'N/A')}")
-        doc.add_paragraph(f"Department: Biomedical Engineering               |   Supervisor: {student_info.get('supervisor', 'N/A')}")
-        doc.add_paragraph(f"Date: May 31, 2026                              |   Score: ______ / ______")
-        doc.add_paragraph("-----------------------------------------------------------------------------------------------------------------------------")
+        # Student Block Table
+        table = doc.add_table(rows=3, cols=2)
+        table.style = 'Light Shading Accent 1'
+        
+        info_data = [
+            ("Course Title: Biomedical Signal Processing", f"Student Name: {student_info.get('name', 'N/A')}"),
+            ("Lab Task: Open-Ended Lab Evaluation", f"Roll/ID Number: {student_info.get('id', 'N/A')}"),
+            ("Department: Biomedical Engineering", "Evaluation Score: ______ / ______")
+        ]
+        
+        for row_idx, (col1_text, col2_text) in enumerate(info_data):
+            row_cells = table.rows[row_idx].cells
+            row_cells[0].text = col1_text
+            row_cells[1].text = col2_text
+            
+            # Format text in the cells
+            for cell in row_cells:
+                for paragraph in cell.paragraphs:
+                    paragraph.paragraph_format.space_before = Pt(3)
+                    paragraph.paragraph_format.space_after = Pt(3)
+                    for run in paragraph.runs:
+                        run.font.size = Pt(9.5)
+                        run.font.name = 'Arial'
+                        
+        p_spacer = doc.add_paragraph()
+        p_spacer.paragraph_format.space_after = Pt(8)
 
         # Sections
         def add_section_header(text):

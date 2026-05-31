@@ -190,7 +190,6 @@ def main():
     parser.add_argument('--test-duration', type=int, default=60, help='Duration in seconds of synthetic test files (default: 60)')
     parser.add_argument('--student-name', type=str, default='Biomedical Student', help='Student Name for Report Title Block')
     parser.add_argument('--student-id', type=str, default='BME-2026-09', help='Student Roll No/ID for Report Title Block')
-    parser.add_argument('--supervisor', type=str, default='Dr. Eleanor Vance', help='Supervisor Name for Report Title Block')
     
     # New processing arguments
     parser.add_argument('--rpeak-method', type=str, default='Pan-Tompkins (Custom)', 
@@ -208,8 +207,7 @@ def main():
     
     student_info = {
         'name': args.student_name,
-        'id': args.student_id,
-        'supervisor': args.supervisor
+        'id': args.student_id
     }
     
     settings = {
