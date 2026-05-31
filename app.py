@@ -370,7 +370,8 @@ active_record = next(s for s in sig_files if s["name"] == active_sig_name)
 res = process_record(active_record, settings)
 
 # Dashboard tabs
-tab_overview, tab_dsp, tab_qrs, tab_ectopic, tab_hrv_time, tab_hrv_freq, tab_hrv_nonl, tab_report = st.tabs([
+tab_intro, tab_overview, tab_dsp, tab_qrs, tab_ectopic, tab_hrv_time, tab_hrv_freq, tab_hrv_nonl, tab_report = st.tabs([
+    "🏠 Academic Intro Desk",
     "📋 Ward Overview", 
     "📈 ECG Signal", 
     "⚡ QRS Detector", 
@@ -380,6 +381,57 @@ tab_overview, tab_dsp, tab_qrs, tab_ectopic, tab_hrv_time, tab_hrv_freq, tab_hrv
     "🔬 Non-Linear Analysis",
     "🎓 Report Desk"
 ])
+
+# Tab 0: Welcome & Academic Desk (Introductory Page)
+with tab_intro:
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.4), rgba(30, 41, 59, 0.6)); padding: 25px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); margin-bottom: 20px;">
+        <h2 style="color: #38BDF8; margin-top: 0; font-weight: 700; display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.8rem;">🔬</span> ECG-HRV System Architecture & CLO Alignment
+        </h2>
+        <p style="font-size: 1.05rem; line-height: 1.6; color: #E2E8F0; margin-bottom: 0;">
+            Welcome to the <b>Clinical ICU Telemetry & ECG-HRV Analytics Hub</b>. This workspace is a 
+            high-fidelity clinical signal processing engine designed to meet the rigorous standards for 
+            academic evaluations. It translates raw electrocardiogram (ECG) data into actionable 
+            Heart Rate Variability (HRV) parameters, representing autonomic nervous system (ANS) tone.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_i1, col_i2 = st.columns(2)
+    with col_i1:
+        st.markdown("""
+        ### ⚙️ The Biomedical Signal Processing (BSP) Pipeline
+        The system implements a robust, modular signal processing pipeline:
+        
+        1. **ECG Acquisition (Stationary)**: Loads high-fidelity records from the pre-loaded **Clinical EMR Database** or **Custom File Uploads** (.csv, .txt, .mat, .dat, .edf). 
+           *(Note: Live streaming sensor inputs are disabled in compliance with laboratory guidelines to ensure signal stability and mathematical repeatability).*
+        2. **Baseline Drift Suppression**: Eliminates low-frequency respiration swings using a non-linear dual median filter (200ms and 600ms cascaded windows) preserving absolute QRS amplitudes.
+        3. **High-Frequency Noise Denoising**: Filters out muscle tremors (EMG) and 50Hz powerline hum using a zero-phase 3rd-order Butterworth bandpass filter.
+        4. **QRS Complex & R-Peak Detection**: Extracts heartbeat indices using the adaptive Pan-Tompkins derivative-thresholding algorithm or NeuroKit2.
+        5. **Ectopic Outlier Correction**: Identifies premature ventricular contractions (PVCs) and repairs them using cubic spline interpolation.
+        """)
+        
+    with col_i2:
+        st.markdown("""
+        ### 🎓 Academic Evaluation & Syllabus Mapping
+        This platform is designed to align directly with grading metrics for Open-Ended Labs (OEL):
+        
+        * **CLO1: Digital Filter Design & Peak Alignment**: Demonstrates zero-phase delay filtering, baseline wander subtraction, and QRS window integration.
+        * **CLO2: Feature Synthesis & Interpretation**: Computes and explains statistical time-domain features (SDNN, RMSSD, pNN50), spectral frequency bands (Welch PSD integration for LF and HF), and non-linear complexity metrics (Poincaré scatter plots, Sample Entropy).
+        * **Scientific Reporting**: Compiles all results, discussion logs, and 7 mandatory evaluation figures into downloadable, print-ready PDF and editable Word DOCX templates.
+        """)
+        
+    st.markdown("""
+    <div style="background-color: rgba(56, 189, 248, 0.06); border-left: 5px solid #38BDF8; padding: 15px; border-radius: 6px; margin-top: 15px; border-top: 1px solid rgba(56, 189, 248, 0.1); border-right: 1px solid rgba(56, 189, 248, 0.1); border-bottom: 1px solid rgba(56, 189, 248, 0.1);">
+        <h4 style="color: #38BDF8; margin: 0 0 6px 0; font-weight: 700;">📡 Operational Notice: Stationary Database Processing Only</h4>
+        <p style="margin: 0; font-size: 0.95rem; color: #E2E8F0; line-height: 1.5;">
+            To ensure zero package drop, avoid active hardware sensor calibration errors, and maintain strict academic reproducibility, 
+            <b>the option for live streaming input is removed from this system</b>. All digital processing, filtering, and HRV assessments 
+            are performed on pre-acquired stationary patient datasets or custom telemetry files.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Tab 1: Ward Overview
 with tab_overview:
