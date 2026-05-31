@@ -30,7 +30,7 @@ def load_ecg_file(filepath, fs=250):
         raise ValueError(f"Unsupported file format: {ext}")
 
     # Clean NaNs and infs from the signal to prevent filter divergence (e.g. in filtfilt)
-    sig = np.asarray(sig, dtype=np.float64)
+    sig = np.asarray(sig, dtype=np.float64).copy()
     non_finite_mask = ~np.isfinite(sig)
     if non_finite_mask.any():
         finite_mask = ~non_finite_mask
