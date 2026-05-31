@@ -163,9 +163,6 @@ st.markdown("""
 # Sidebar - Settings Panel
 st.sidebar.header("🎛️ Analysis Settings")
 
-# Data loading
-data_source = st.sidebar.selectbox("ECG Data Source", ["Clinical EMR Database", "Upload Custom ECG File(s)"])
-
 # Common settings
 fs = st.sidebar.number_input("Sampling Frequency (fs in Hz)", value=250, min_value=100, max_value=1000)
 
@@ -208,84 +205,40 @@ settings = {
     'welch_overlap_pct': welch_overlap_pct
 }
 
-# --- Load files or generate ---
+# --- Load files ---
 sig_files = []
 active_sig_name = None
 true_peaks = None
 
-if data_source == "Clinical EMR Database":
-    patient_sel = st.sidebar.selectbox(
-        "Select Patient EMR Record",
-        [
-            "Patient 001 - Normal Sinus Rhythm (NSR)",
-            "Patient 002 - Atrial Fibrillation (AFib)",
-            "Patient 003 - Premature Ventricular Contractions (PVCs)",
-            "Patient 004 - Ventricular Tachycardia (VTach)"
-        ]
-    )
-    
-    # Map selection to rhythm
-    rhythm_mapping = {
-        "Patient 001 - Normal Sinus Rhythm (NSR)": "NSR",
-        "Patient 002 - Atrial Fibrillation (AFib)": "AFib",
-        "Patient 003 - Premature Ventricular Contractions (PVCs)": "PVC",
-        "Patient 004 - Ventricular Tachycardia (VTach)": "VTach"
-    }
-    rhythm = rhythm_mapping[patient_sel]
-    duration = st.sidebar.slider("Record Duration (sec)", min_value=10, max_value=300, value=60)
-    
-    # Under the hood, set realistic standard clinical noise parameters
-    # This removes the "synthetic generator options" and manual noise sliders from the sidebar
-    noise_config = {
-        'baseline_wander': 0.15,  # Realistic breathing drift
-        'powerline': 0.03,        # 50 Hz powerline hum
-        'emg': 0.015              # Muscle micro-tremors
-    }
-    
-    generator = SyntheticECGGenerator(fs=fs)
-    t, sig, true_peaks, _ = generator.generate_signal(
-        duration_sec=duration,
-        rhythm=rhythm,
-        noise_config=noise_config
-    )
-    active_name = patient_sel.split(" - ")[0].replace(" ", "_") + f"_{rhythm}"
-    sig_files = [{"name": active_name, "t": t, "sig": sig}]
-    active_sig_name = sig_files[0]["name"]
-else:
-    uploaded_files = st.sidebar.file_uploader(
-        "Upload ECG Records",
-        type=["csv", "txt", "mat", "dat", "edf"],
-        accept_multiple_files=True
-    )
-    
-    if len(uploaded_files) > 0:
-        for f in uploaded_files:
-            # Save uploaded file in temp location to read it
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.name)[1]) as temp_f:
-                temp_f.write(f.getbuffer())
-                temp_path = temp_f.name
+uploaded_files = st.sidebar.file_uploader(
+    "Upload ECG Records",
+    type=["csv", "txt", "mat", "dat", "edf"],
+    accept_multiple_files=True
+)
+
+if len(uploaded_files) > 0:
+    for f in uploaded_files:
+        # Save uploaded file in temp location to read it
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.name)[1]) as temp_f:
+            temp_f.write(f.getbuffer())
+            temp_path = temp_f.name
+            
+        try:
+            t, sig, file_fs = load_ecg_file(temp_path, fs=fs)
+            sig_files.append({
+                "name": f.name,
+                "t": t,
+                "sig": sig,
+                "fs": file_fs
+            })
+        except Exception as e:
+            st.error(f"Error loading {f.name}: {e}")
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
                 
-            try:
-                t, sig, file_fs = load_ecg_file(temp_path, fs=fs)
-                sig_files.append({
-                    "name": f.name,
-                    "t": t,
-                    "sig": sig,
-                    "fs": file_fs
-                })
-            except Exception as e:
-                st.error(f"Error loading {f.name}: {e}")
-            finally:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-                    
-        if len(sig_files) > 0:
-            active_sig_name = st.sidebar.selectbox("Select Active File to Inspect", [s["name"] for s in sig_files])
-        else:
-            st.stop()
-    else:
-        st.info("Please upload one or more ECG records (CSV, TXT, MAT, DAT, EDF) or switch to Clinical EMR Database.")
-        st.stop()
+    if len(sig_files) > 0:
+        active_sig_name = st.sidebar.selectbox("Select Active File to Inspect", [s["name"] for s in sig_files])
 
 # Helper function to run processing on a signal record
 def process_record(record, settings):
@@ -366,8 +319,10 @@ def process_record(record, settings):
     }
 
 # Process the active file
-active_record = next(s for s in sig_files if s["name"] == active_sig_name)
-res = process_record(active_record, settings)
+res = None
+if len(sig_files) > 0 and active_sig_name is not None:
+    active_record = next(s for s in sig_files if s["name"] == active_sig_name)
+    res = process_record(active_record, settings)
 
 # Dashboard tabs
 tab_intro, tab_overview, tab_dsp, tab_qrs, tab_ectopic, tab_hrv_time, tab_hrv_freq, tab_hrv_nonl, tab_report = st.tabs([
@@ -397,6 +352,21 @@ with tab_intro:
         </p>
     </div>
     """, unsafe_allow_html=True)
+
+    # Specific OEL core objective requested by the user
+    st.markdown("""
+    <div style="background-color: rgba(56, 189, 248, 0.05); border: 1px dashed rgba(56, 189, 248, 0.25); padding: 18px; border-radius: 8px; margin-bottom: 20px;">
+        <h4 style="color: #38BDF8; margin: 0 0 10px 0; font-weight: 700; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+            <span>🎯</span> Open-Ended Lab (OEL) Core Objective
+        </h4>
+        <p style="margin: 0; font-size: 1.02rem; color: #F1F5F9; line-height: 1.6; font-style: italic;">
+            "Develop time-domain, statistical, and non-linear HRV analysis modules from ECG signals, including RR-interval 
+            extraction, SDNN, RMSSD, Poincaré plots, and entropy measures for comprehensive variability assessment. 
+            Implement frequency-domain HRV analysis with power spectral density (LF/HF bands) to quantify parasympathetic (HF) 
+            and sympathetic (LF, LF/HF ratio) autonomic responses in an interactive ECG-HRV dashboard."
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
     
     col_i1, col_i2 = st.columns(2)
     with col_i1:
@@ -404,8 +374,8 @@ with tab_intro:
         ### ⚙️ The Biomedical Signal Processing (BSP) Pipeline
         The system implements a robust, modular signal processing pipeline:
         
-        1. **ECG Acquisition (Stationary)**: Loads high-fidelity records from the pre-loaded **Clinical EMR Database** or **Custom File Uploads** (.csv, .txt, .mat, .dat, .edf). 
-           *(Note: Live streaming sensor inputs are disabled in compliance with laboratory guidelines to ensure signal stability and mathematical repeatability).*
+        1. **ECG Acquisition (Stationary)**: Loads high-fidelity records from the **Custom File Uploads** (.csv, .txt, .mat, .dat, .edf). 
+           *(Note: Live streaming sensor inputs and pre-loaded databases are removed to ensure direct student file analysis and reproducibility).*
         2. **Baseline Drift Suppression**: Eliminates low-frequency respiration swings using a non-linear dual median filter (200ms and 600ms cascaded windows) preserving absolute QRS amplitudes.
         3. **High-Frequency Noise Denoising**: Filters out muscle tremors (EMG) and 50Hz powerline hum using a zero-phase 3rd-order Butterworth bandpass filter.
         4. **QRS Complex & R-Peak Detection**: Extracts heartbeat indices using the adaptive Pan-Tompkins derivative-thresholding algorithm or NeuroKit2.
@@ -424,14 +394,19 @@ with tab_intro:
         
     st.markdown("""
     <div style="background-color: rgba(56, 189, 248, 0.06); border-left: 5px solid #38BDF8; padding: 15px; border-radius: 6px; margin-top: 15px; border-top: 1px solid rgba(56, 189, 248, 0.1); border-right: 1px solid rgba(56, 189, 248, 0.1); border-bottom: 1px solid rgba(56, 189, 248, 0.1);">
-        <h4 style="color: #38BDF8; margin: 0 0 6px 0; font-weight: 700;">📡 Operational Notice: Stationary Database Processing Only</h4>
+        <h4 style="color: #38BDF8; margin: 0 0 6px 0; font-weight: 700;">📡 Operational Notice: Stationary File Processing Only</h4>
         <p style="margin: 0; font-size: 0.95rem; color: #E2E8F0; line-height: 1.5;">
             To ensure zero package drop, avoid active hardware sensor calibration errors, and maintain strict academic reproducibility, 
             <b>the option for live streaming input is removed from this system</b>. All digital processing, filtering, and HRV assessments 
-            are performed on pre-acquired stationary patient datasets or custom telemetry files.
+            are performed on pre-acquired stationary patient datasets or custom telemetry files uploaded by the user.
         </p>
     </div>
     """, unsafe_allow_html=True)
+    
+    if res is None:
+        st.markdown("---")
+        st.info("👈 **Please upload one or more ECG records in the sidebar to activate the clinical analytics dashboard tabs.**")
+        st.stop()
 
 # Tab 1: Ward Overview
 with tab_overview:
@@ -760,7 +735,7 @@ Filter Cutoffs:    Low cut: {settings['lowcut']}Hz, High cut: {settings['highcut
             os.makedirs(plots_dir)
             
             # Single file compiler
-            if len(sig_files) == 1 or data_source == "Clinical EMR Database":
+            if len(sig_files) == 1:
                 # Initialize Report Generator
                 reporter = ReportGenerator(fs=res['fs'])
                 
