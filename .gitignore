@@ -1,0 +1,22 @@
+# Python bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Streamlit local state
+.streamlit/
+
+# Generated reports and temporary plots
+temp_report_plots/
+ECG_HRV_Report_*.pdf
+ECG_HRV_Report_*.docx
+ECG_HRV_Batch_Reports_*.zip
+*.pdf
+*.docx
+*.zip
+
+# Temporary files and directories
+tempfile*
+temp_f*
