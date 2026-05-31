@@ -591,17 +591,40 @@ with tab_hrv_time:
     
     st.markdown("---")
     
-    # RR Interval Distribution Histogram (Plotly)
-    fig = px.histogram(
-        x=res['corrected_rr'], 
-        nbins=20,
-        title="R-R Interval Probability Distribution Histogram",
-        labels={'x': 'RR Interval (ms)'},
-        color_discrete_sequence=['#00ACC1'],
-        template="plotly_dark"
-    )
-    fig.update_layout(yaxis_title="Frequency Count", height=380)
-    st.plotly_chart(fig, use_container_width=True)
+    col_hist, col_math = st.columns([2.5, 1.5])
+    with col_hist:
+        # RR Interval Distribution Histogram (Plotly)
+        fig = px.histogram(
+            x=res['corrected_rr'], 
+            nbins=20,
+            title="R-R Interval Probability Distribution Histogram",
+            labels={'x': 'RR Interval (ms)'},
+            color_discrete_sequence=['#00ACC1'],
+            template="plotly_dark"
+        )
+        fig.update_layout(yaxis_title="Frequency Count", height=380)
+        st.plotly_chart(fig, use_container_width=True)
+        
+    with col_math:
+        st.markdown("### 📐 Statistical Formulations")
+        
+        st.markdown("**1. SDNN (Standard Deviation of NN)**")
+        st.latex(r"""
+        \text{SDNN} = \sqrt{\frac{1}{N-1}\sum_{i=1}^N (RR_i - \overline{RR})^2}
+        """)
+        st.caption("Quantifies the total autonomic variance (both sympathetic and parasympathetic modulation) during the recording.")
+        
+        st.markdown("**2. RMSSD (Successive Difference RMS)**")
+        st.latex(r"""
+        \text{RMSSD} = \sqrt{\frac{1}{N-1}\sum_{i=1}^{N-1} (RR_{i+1} - RR_i)^2}
+        """)
+        st.caption("Reflects high-frequency parasympathetic vagal activity and respiratory sinus arrhythmia (RSA).")
+        
+        st.markdown("**3. pNN50 (Percentage >50ms)**")
+        st.latex(r"""
+        \text{pNN50} = \frac{\text{Count}(|\Delta RR| > 50\text{ ms})}{N - 1} \times 100\%
+        """)
+        st.caption("The percentage of successive R-R intervals that deviate by more than 50 ms.")
 
 # Tab 6: Frequency-Domain HRV
 with tab_hrv_freq:
@@ -614,35 +637,54 @@ with tab_hrv_freq:
     
     st.markdown("---")
     
-    # Plotly PSD Welch with Shaded bands
-    f = res['freq_m']['psd_f']
-    pxx = res['freq_m']['psd_p']
-    
-    fig = go.Figure()
-    if len(f) > 0:
-        fig.add_trace(go.Scatter(x=f, y=pxx, name="PSD Curve", line=dict(color="#AA00FF", width=2)))
+    col_psd, col_math = st.columns([2.5, 1.5])
+    with col_psd:
+        # Plotly PSD Welch with Shaded bands
+        f = res['freq_m']['psd_f']
+        pxx = res['freq_m']['psd_p']
         
-        # Shade VLF
-        vlf_mask = (f >= 0.00) & (f < 0.04)
-        fig.add_trace(go.Scatter(x=f[vlf_mask], y=pxx[vlf_mask], fill='tozeroy', name="VLF", fillcolor="rgba(189, 189, 189, 0.3)", line=dict(color="rgba(0,0,0,0)")))
+        fig = go.Figure()
+        if len(f) > 0:
+            fig.add_trace(go.Scatter(x=f, y=pxx, name="PSD Curve", line=dict(color="#AA00FF", width=2)))
+            
+            # Shade VLF
+            vlf_mask = (f >= 0.00) & (f < 0.04)
+            fig.add_trace(go.Scatter(x=f[vlf_mask], y=pxx[vlf_mask], fill='tozeroy', name="VLF", fillcolor="rgba(189, 189, 189, 0.3)", line=dict(color="rgba(0,0,0,0)")))
+            
+            # Shade LF
+            lf_mask = (f >= 0.04) & (f < 0.15)
+            fig.add_trace(go.Scatter(x=f[lf_mask], y=pxx[lf_mask], fill='tozeroy', name="LF Sympathovagal", fillcolor="rgba(255, 112, 67, 0.4)", line=dict(color="rgba(0,0,0,0)")))
+            
+            # Shade HF
+            hf_mask = (f >= 0.15) & (f <= 0.40)
+            fig.add_trace(go.Scatter(x=f[hf_mask], y=pxx[hf_mask], fill='tozeroy', name="HF Parasympathetic", fillcolor="rgba(38, 166, 154, 0.4)", line=dict(color="rgba(0,0,0,0)")))
+            
+            fig.update_layout(
+                xaxis_range=[0, 0.5],
+                xaxis_title="Frequency (Hz)",
+                yaxis_title="Power Spectral Density (ms²/Hz)",
+                template="plotly_dark",
+                height=400,
+                margin=dict(l=20, r=20, t=30, b=20)
+            )
+        st.plotly_chart(fig, use_container_width=True)
         
-        # Shade LF
-        lf_mask = (f >= 0.04) & (f < 0.15)
-        fig.add_trace(go.Scatter(x=f[lf_mask], y=pxx[lf_mask], fill='tozeroy', name="LF Sympathovagal", fillcolor="rgba(255, 112, 67, 0.4)", line=dict(color="rgba(0,0,0,0)")))
+    with col_math:
+        st.markdown("### 📐 Spectral Formulations")
+        st.markdown("**Welch Periodogram Averaging**")
+        st.latex(r"""
+        P_{xx}(f) = \frac{1}{K}\sum_{i=1}^K \left| \frac{1}{N}\sum_{n=0}^{N-1} x_i(n) w(n) e^{-j 2 \pi f n} \right|^2
+        """)
+        st.caption("Splits the uniformly resampled (4Hz) RR-series into 50% overlapping window segments to compute average spectra.")
         
-        # Shade HF
-        hf_mask = (f >= 0.15) & (f <= 0.40)
-        fig.add_trace(go.Scatter(x=f[hf_mask], y=pxx[hf_mask], fill='tozeroy', name="HF Parasympathetic", fillcolor="rgba(38, 166, 154, 0.4)", line=dict(color="rgba(0,0,0,0)")))
-        
-        fig.update_layout(
-            xaxis_range=[0, 0.5],
-            xaxis_title="Frequency (Hz)",
-            yaxis_title="Power Spectral Density (ms²/Hz)",
-            template="plotly_dark",
-            height=400,
-            margin=dict(l=20, r=20, t=30, b=20)
-        )
-    st.plotly_chart(fig, use_container_width=True)
+        st.markdown("**Normalized Power (n.u.)**")
+        st.latex(r"""
+        \begin{aligned}
+        \text{LF}_{\text{nu}} &= \frac{\text{LF}}{\text{Total Power} - \text{VLF}} \times 100 \\
+        \text{HF}_{\text{nu}} &= \frac{\text{HF}}{\text{Total Power} - \text{VLF}} \times 100
+        \end{aligned}
+        """)
+        st.caption("Standardizes LF and HF components by removing the slow vasomotor fluctuations (VLF).")
 
 # Tab 7: Non-Linear Analysis
 with tab_hrv_nonl:
@@ -655,41 +697,59 @@ with tab_hrv_nonl:
     
     st.markdown("---")
     
-    # Plotly Poincaré Scatter with SD1/SD2 Axes
-    x_p = res['corrected_rr'][:-1]
-    y_p = res['corrected_rr'][1:]
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=x_p, y=y_p, mode="markers", name="RR Pairs", marker=dict(color="#29B6F6", size=6, opacity=0.7)))
-    
-    min_val = min(x_p.min(), y_p.min()) - 50
-    max_val = max(x_p.max(), y_p.max()) + 50
-    fig.add_trace(go.Scatter(x=[min_val, max_val], y=[min_val, max_val], line=dict(color="#EF5350", dash="dash"), name="Line of Identity (y = x)"))
-    
-    # Plot SD1/SD2 lines
-    mean_x = np.mean(x_p)
-    mean_y = np.mean(y_p)
-    sd1 = res['nonl_m']['sd1']
-    sd2 = res['nonl_m']['sd2']
-    angle = np.pi / 4
-    
-    fig.add_trace(go.Scatter(x=[mean_x - sd1 * np.sin(angle), mean_x + sd1 * np.sin(angle)],
-                             y=[mean_y + sd1 * np.cos(angle), mean_y - sd1 * np.cos(angle)],
-                             line=dict(color="#FF7043", width=3), name=f"SD1: {sd1:.1f} ms"))
-                             
-    fig.add_trace(go.Scatter(x=[mean_x - sd2 * np.cos(angle), mean_x + sd2 * np.cos(angle)],
-                             y=[mean_y - sd2 * np.sin(angle), mean_y + sd2 * np.sin(angle)],
-                             line=dict(color="#66BB6A", width=3), name=f"SD2: {sd2:.1f} ms"))
-                             
-    fig.update_layout(
-        xaxis_title="RR_n (ms)",
-        yaxis_title="RR_n+1 (ms)",
-        template="plotly_dark",
-        height=450,
-        width=550,
-        margin=dict(l=20, r=20, t=30, b=20)
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    col_scat, col_math = st.columns([2.2, 1.8])
+    with col_scat:
+        # Plotly Poincaré Scatter with SD1/SD2 Axes
+        x_p = res['corrected_rr'][:-1]
+        y_p = res['corrected_rr'][1:]
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=x_p, y=y_p, mode="markers", name="RR Pairs", marker=dict(color="#29B6F6", size=6, opacity=0.7)))
+        
+        min_val = min(x_p.min(), y_p.min()) - 50
+        max_val = max(x_p.max(), y_p.max()) + 50
+        fig.add_trace(go.Scatter(x=[min_val, max_val], y=[min_val, max_val], line=dict(color="#EF5350", dash="dash"), name="Line of Identity (y = x)"))
+        
+        # Plot SD1/SD2 lines
+        mean_x = np.mean(x_p)
+        mean_y = np.mean(y_p)
+        sd1 = res['nonl_m']['sd1']
+        sd2 = res['nonl_m']['sd2']
+        angle = np.pi / 4
+        
+        fig.add_trace(go.Scatter(x=[mean_x - sd1 * np.sin(angle), mean_x + sd1 * np.sin(angle)],
+                                 y=[mean_y + sd1 * np.cos(angle), mean_y - sd1 * np.cos(angle)],
+                                 line=dict(color="#FF7043", width=3), name=f"SD1: {sd1:.1f} ms"))
+                                 
+        fig.add_trace(go.Scatter(x=[mean_x - sd2 * np.cos(angle), mean_x + sd2 * np.cos(angle)],
+                                 y=[mean_y - sd2 * np.sin(angle), mean_y + sd2 * np.sin(angle)],
+                                 line=dict(color="#66BB6A", width=3), name=f"SD2: {sd2:.1f} ms"))
+                                 
+        fig.update_layout(
+            xaxis_title="RR_n (ms)",
+            yaxis_title="RR_n+1 (ms)",
+            template="plotly_dark",
+            height=450,
+            margin=dict(l=20, r=20, t=30, b=20)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+    with col_math:
+        st.markdown("### 📐 Non-Linear Formulations")
+        st.markdown("**Poincaré Geometry (SD1 & SD2)**")
+        st.latex(r"""
+        \begin{aligned}
+        \text{SD1}^2 &= \frac{1}{2} \text{Var}(RR_n - RR_{n+1}) \\
+        \text{SD2}^2 &= 2 \text{Var}(RR) - \text{SD1}^2
+        \end{aligned}
+        """)
+        st.caption("SD1 measures immediate short-term variability (transverse to line of identity), while SD2 measures long-term consolidated autonomic spread.")
+        
+        st.markdown("**Sample Entropy Complexity (SampEn)**")
+        st.latex(r"""
+        \text{SampEn}(m, r, N) = -\ln\left[\frac{A}{B}\right]
+        """)
+        st.caption("Quantifies the likelihood that matching templates of length $m=2$ remain similar at length $m+1$, within distance threshold $r = 0.2\sigma$. High value indicates healthy adaptive complexity.")
 
 # Tab 8: Report Desk
 with tab_report:
