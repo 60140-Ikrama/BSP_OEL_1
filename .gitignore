@@ -20,3 +20,8 @@ ECG_HRV_Batch_Reports_*.zip
 # Temporary files and directories
 tempfile*
 temp_f*
+
+# Test/validation output directories
+test_out/
+output_results/
+validation_results/
