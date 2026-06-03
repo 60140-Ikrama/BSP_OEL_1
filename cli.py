@@ -182,14 +182,14 @@ def process_ecg_file(filepath, output_dir, student_info, settings):
     }
 
 def main():
-    parser = argparse.ArgumentParser(description="Academic ECG-HRV Processing & Analysis System")
+    parser = argparse.ArgumentParser(description="ECG-HRV Processing & Analysis System")
     parser.add_argument('--input', type=str, help='Path to an ECG file (CSV/TXT/MAT/DAT/EDF) or directory of files')
     parser.add_argument('--fs', type=int, default=250, help='ECG sampling rate in Hz (default: 250)')
     parser.add_argument('--outdir', type=str, default='output_results', help='Directory to save outputs and reports')
     parser.add_argument('--generate-test', action='store_true', help='Generate synthetic test ECG files in output directory')
     parser.add_argument('--test-duration', type=int, default=60, help='Duration in seconds of synthetic test files (default: 60)')
-    parser.add_argument('--student-name', type=str, default='Biomedical Student', help='Student Name for Report Title Block')
-    parser.add_argument('--student-id', type=str, default='BME-2026-09', help='Student Roll No/ID for Report Title Block')
+    parser.add_argument('--student-name', type=str, default='ECG Analyst', help='Analyst Name for Report Title Block')
+    parser.add_argument('--student-id', type=str, default='REC-2026-09', help='Record / Reference ID for Report Title Block')
     
     # New processing arguments
     parser.add_argument('--rpeak-method', type=str, default='Pan-Tompkins (Custom)', 

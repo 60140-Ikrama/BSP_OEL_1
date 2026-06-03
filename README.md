@@ -1,22 +1,22 @@
-# Academic ECG-HRV Analysis System (OEL Compliance: CLO1 & CLO2)
+# ECG-HRV Analysis System
 
-This repository contains a professional-grade **ECG Signal Processing & Heart Rate Variability (HRV) Analysis System** implemented in Python. It is designed to fully satisfy the academic requirements of the **Open-Ended Lab (OEL)**, **CLO1** (Design and implementation of filtering and peak detection pipelines), and **CLO2** (Autonomic physiological analysis, statistical feature extraction, and reporting).
+This repository contains a professional-grade **ECG Signal Processing & Heart Rate Variability (HRV) Analysis System** implemented in Python. It is designed for multi-stage digital filtering, R-peak detection, autonomic physiological analysis, statistical feature extraction, and automated report generation.
 
 ---
 
-## 📋 Course & Syllabus Alignment
+## 📋 System Features
 
-### CLO1: Signal Processing & Preprocessing
+### Signal Processing & Preprocessing
 *   **Baseline Wander Removal**: Implements dual median filtering (200ms and 600ms windows) to estimate and subtract respiratory drifts without attenuating QRS amplitudes or introducing phase distortion.
 *   **Denoising (Bandpass Filter)**: Employs a 3rd-order Butterworth bandpass filter (0.5–45 Hz) applied via zero-phase double-filtering (`filtfilt`) to suppress high-frequency muscle artifacts and 50 Hz powerline interference.
 *   **QRS R-Peak Detection**: Implements the step-by-step classic Pan-Tompkins algorithm including derivative filtering, squaring, moving integration (150ms window), and adaptive double-thresholding with back-search and refractory lockouts.
 
-### CLO2: Feature Extraction, Physiological Assessment & Synthesis
+### Feature Extraction, Physiological Assessment & Synthesis
 *   **Ectopic Beat Handling**: Detects outlier beats (PVCs) using localized median percentage deviation (20% threshold) and restores missing intervals using cubic spline interpolation.
 *   **Linear HRV (Time-Domain)**: Computes $Mean\ RR$, $Mean\ HR$, $SDNN$, $RMSSD$, $NN50$, and $pNN50$.
 *   **Linear HRV (Frequency-Domain)**: Resamples unevenly spaced RR intervals to 4 Hz and applies the Welch Periodogram to integrate power in Very Low (VLF, 0.00–0.04 Hz), Low (LF, 0.04–0.15 Hz), and High (HF, 0.15–0.40 Hz) frequency bands to compute the sympathovagal balance ($LF/HF$ Ratio).
 *   **Non-Linear HRV**: Calculates Poincaré plot geometry ($SD1$ and $SD2$) and computes rhythm complexity via Sample Entropy ($SampEn$).
-*   **Reporting**: Automatically compiles clinical tables, physiological discussion, and 7 mandatory figures into printable PDF and editable Word DOCX reports.
+*   **Reporting**: Automatically compiles clinical tables, physiological discussion, and 7 figures into printable PDF and editable Word DOCX reports.
 
 ---
 

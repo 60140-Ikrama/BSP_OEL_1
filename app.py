@@ -17,7 +17,7 @@ from core.file_loader import load_ecg_file
 
 # Page configuration
 st.set_page_config(
-    page_title="ECG-HRV Analytics Dashboard | OEL CLO1 & CLO2",
+    page_title="ECG-HRV Analytics Dashboard",
     page_icon="🫀",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -59,15 +59,7 @@ st.markdown("""
     .metric-desc { font-size: 0.72rem; color: #38BDF8; margin-top: 5px; font-weight: 500; }
     .metric-sub { font-size: 0.95rem; color: #CBD5E1; font-weight: 500; margin-top: 2px; }
 
-    /* CLO Badges */
-    .clo-badge {
-        display: inline-block; padding: 3px 10px; border-radius: 20px;
-        font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px;
-        margin-left: 8px; vertical-align: middle;
-    }
-    .clo1 { background: rgba(56,189,248,0.15); color: #38BDF8; border: 1px solid rgba(56,189,248,0.3); }
-    .clo2 { background: rgba(167,139,250,0.15); color: #A78BFA; border: 1px solid rgba(167,139,250,0.3); }
-    .clo-both { background: rgba(52,211,153,0.15); color: #34D399; border: 1px solid rgba(52,211,153,0.3); }
+
 
     /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
@@ -118,9 +110,7 @@ st.markdown("""
         🫀 ECG-HRV Analytics Dashboard
     </h1>
     <p style="color:#94A3B8; margin:7px 0 0 0; font-size:0.95rem; font-weight:500;">
-        Biomedical Signal Processing — Open-Ended Lab (OEL) Evaluation Platform &nbsp;|&nbsp;
-        <span style="color:#38BDF8; font-weight:700;">CLO1: Signal Processing</span> &nbsp;&amp;&nbsp;
-        <span style="color:#A78BFA; font-weight:700;">CLO2: Interactive Dashboard</span>
+        Biomedical Signal Processing & Heart Rate Variability (HRV) Analysis Platform
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -360,15 +350,15 @@ if sig_files and active_sig_name:
 # ─── Tabs ─────────────────────────────────────────────────────────────────────
 (tab_intro, tab_overview, tab_dsp, tab_qrs,
  tab_ectopic, tab_hrv_time, tab_hrv_freq, tab_hrv_nonl, tab_report) = st.tabs([
-    "🏠 Intro & Objectives",
-    "📋 Overview  [CLO1+CLO2]",
-    "📈 ECG Filtering  [CLO1]",
-    "⚡ QRS Detection  [CLO1]",
-    "🩺 RR & Ectopics  [CLO1]",
-    "📊 Time-Domain HRV  [CLO1]",
-    "📈 Frequency HRV  [CLO1]",
-    "🔬 Non-Linear HRV  [CLO1]",
-    "🎓 Report Desk  [CLO2]"
+    "🏠 Introduction",
+    "📋 Overview",
+    "📈 ECG Filtering",
+    "⚡ QRS Detection",
+    "🩺 RR & Ectopics",
+    "📊 Time-Domain HRV",
+    "📈 Frequency HRV",
+    "🔬 Non-Linear HRV",
+    "🎓 Report Desk"
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -379,7 +369,7 @@ with tab_intro:
     <div style="background: linear-gradient(135deg, rgba(15,23,42,0.5), rgba(30,41,59,0.7)); padding: 26px;
          border-radius: 14px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 20px;">
         <h2 style="color:#38BDF8; margin-top:0; font-weight:800; font-size:1.6rem;">
-            🔬 ECG-HRV Analysis System — Open-Ended Lab
+            🔬 ECG-HRV Analysis System
         </h2>
         <p style="font-size:1.0rem; line-height:1.7; color:#E2E8F0; margin-bottom:0;">
             This platform implements a <b>complete biomedical signal processing pipeline</b> for
@@ -390,56 +380,7 @@ with tab_intro:
     </div>
     """, unsafe_allow_html=True)
 
-    # OEL Objective
-    st.markdown("""
-    <div style="background: rgba(56,189,248,0.06); border: 1px dashed rgba(56,189,248,0.3);
-         padding: 18px 22px; border-radius: 10px; margin-bottom: 22px;">
-        <h4 style="color:#38BDF8; margin:0 0 10px 0; font-weight:700;">
-            🎯 Open-Ended Lab (OEL) Objective
-        </h4>
-        <p style="margin:0; font-size:1.01rem; color:#F1F5F9; line-height:1.65; font-style:italic;">
-            "Develop time-domain, statistical, and non-linear HRV analysis modules from ECG signals,
-            including RR-interval extraction, SDNN, RMSSD, Poincaré plots, and entropy measures for
-            comprehensive variability assessment. Implement frequency-domain HRV analysis with power
-            spectral density (LF/HF bands) to quantify parasympathetic (HF) and sympathetic (LF,
-            LF/HF ratio) autonomic responses in an interactive ECG-HRV dashboard."
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("""
-        <div class="section-header">⚙️ BSP Pipeline — CLO1</div>
-        """, unsafe_allow_html=True)
-        st.markdown("""
-        | Step | Module | Method |
-        |------|--------|--------|
-        | 1 | ECG Acquisition | File upload (.csv/.txt/.mat/.dat/.edf) |
-        | 2 | Baseline Wander Removal | Dual Median Filter (200ms + 600ms) |
-        | 3 | Bandpass Filtering | Zero-phase Butterworth 3rd-order |
-        | 4 | Savitzky-Golay Denoising | Polynomial local fit (80ms window) |
-        | 5 | R-Peak Detection | Pan-Tompkins / NeuroKit2 algorithms |
-        | 6 | Ectopic Correction | Cubic spline interpolation |
-        | 7 | Time-Domain HRV | SDNN, RMSSD, pNN50, NN50, CVNN |
-        | 8 | Frequency-Domain HRV | Welch PSD → VLF/LF/HF bands |
-        | 9 | Non-Linear HRV | Poincaré SD1/SD2, Sample Entropy |
-        """)
-
-    with col_b:
-        st.markdown("""
-        <div class="section-header">🎓 CLO Mapping & Dashboard — CLO2</div>
-        """, unsafe_allow_html=True)
-        st.markdown("""
-        | CLO | Description | Dashboard Feature |
-        |-----|-------------|-------------------|
-        | **CLO1** | Accurate ECG peak detection & reliable RR intervals | Tabs: ECG Filtering, QRS Detection, RR Analysis |
-        | **CLO1** | Correct time-domain HRV features | Tab: Time-Domain HRV (SDNN, RMSSD, pNN50) |
-        | **CLO1** | Frequency-domain HRV (LF/HF bands) | Tab: Frequency HRV (Welch PSD, band powers) |
-        | **CLO1** | Non-linear complexity metrics | Tab: Non-Linear HRV (Poincaré, SampEn) |
-        | **CLO2** | Professional interactive dashboard | All tabs — zoom, range sliders, filter preview |
-        | **CLO2** | Filter selection visualization | Sidebar Bode plot updates live |
-        """)
 
     # Operational Notice
     st.markdown("""
@@ -482,7 +423,7 @@ with tab_overview:
         pk_zoom = res['r_peaks'][res['r_peaks'] < int(zoom_sec * res['fs'])]
         fig_ov.add_trace(go.Scatter(x=res['t'][pk_zoom], y=res['sig_smoothed'][pk_zoom],
                                     mode="markers", name="R-Peaks",
-                                    marker=dict(color="#FFD600", size=10, line=dict(color="black", width=1))))
+                                    marker=dict(color="rgba(0,0,0,0)", size=10, line=dict(color="red", width=2.0))))
         fig_ov.update_xaxes(rangeslider_visible=True)
         fig_ov.update_layout(
             xaxis_title="Time (s)", yaxis_title="Amplitude (mV)",
@@ -547,7 +488,7 @@ with tab_overview:
 # TAB 2 — ECG FILTERING
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_dsp:
-    st.markdown('<div class="section-header">📈 ECG Signal Conditioning — Baseline Removal &amp; Bandpass Filtering <span class="clo-badge clo1">CLO1</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">📈 ECG Signal Conditioning — Baseline Removal &amp; Bandpass Filtering</div>', unsafe_allow_html=True)
 
     col_sig, col_info = st.columns([3, 1.2])
     with col_sig:
@@ -628,7 +569,7 @@ with tab_dsp:
 # TAB 3 — QRS DETECTION
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_qrs:
-    st.markdown('<div class="section-header">⚡ QRS Complex Detection — R-Peak Extraction <span class="clo-badge clo1">CLO1</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">⚡ QRS Complex Detection — R-Peak Extraction</div>', unsafe_allow_html=True)
 
     col_qrs, col_qinfo = st.columns([3, 1.2])
     with col_qrs:
@@ -669,8 +610,8 @@ with tab_qrs:
             pk_10 = res['r_peaks'][res['r_peaks'] < int(10.0 * res['fs'])]
             fig_qrs2.add_trace(go.Scatter(
                 x=res['t'][pk_10], y=res['sig_smoothed'][pk_10],
-                mode="markers", name="Detected R-Peaks",
-                marker=dict(color="#FFD600", size=11, symbol="diamond")
+                mode="markers", name="R-Peaks",
+                marker=dict(color="rgba(0,0,0,0)", size=10, line=dict(color="red", width=2.0))
             ))
             fig_qrs2.update_xaxes(rangeslider_visible=True)
             fig_qrs2.update_layout(xaxis_title="Time (s)", yaxis_title="Amplitude (mV)",
@@ -715,7 +656,7 @@ with tab_qrs:
 # TAB 4 — RR & ECTOPIC ANALYSIS
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_ectopic:
-    st.markdown('<div class="section-header">🩺 RR Tachogram &amp; Ectopic Beat Correction <span class="clo-badge clo1">CLO1</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">🩺 RR Tachogram &amp; Ectopic Beat Correction</div>', unsafe_allow_html=True)
 
     col_tach, col_einfo = st.columns([3, 1.2])
     with col_tach:
@@ -779,7 +720,7 @@ with tab_ectopic:
 # TAB 5 — TIME-DOMAIN HRV
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_hrv_time:
-    st.markdown('<div class="section-header">📊 Time-Domain HRV Analysis <span class="clo-badge clo1">CLO1</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">📊 Time-Domain HRV Analysis</div>', unsafe_allow_html=True)
 
     tm = res['time_m']
     cvnn = (tm['sdnn'] / tm['mean_rr'] * 100) if tm['mean_rr'] > 0 else 0.0
@@ -863,7 +804,7 @@ with tab_hrv_time:
 # TAB 6 — FREQUENCY-DOMAIN HRV
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_hrv_freq:
-    st.markdown('<div class="section-header">📈 Frequency-Domain HRV — Welch Power Spectral Density <span class="clo-badge clo1">CLO1</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">📈 Frequency-Domain HRV — Welch Power Spectral Density</div>', unsafe_allow_html=True)
 
     fm = res['freq_m']
     total_p = fm.get('total_power', fm['vlf'] + fm['lf'] + fm['hf'])
@@ -972,7 +913,7 @@ with tab_hrv_freq:
 # TAB 7 — NON-LINEAR HRV
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_hrv_nonl:
-    st.markdown('<div class="section-header">🔬 Non-Linear HRV — Poincaré Plot &amp; Complexity Analysis <span class="clo-badge clo1">CLO1</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">🔬 Non-Linear HRV — Poincaré Plot &amp; Complexity Analysis</div>', unsafe_allow_html=True)
 
     nm = res['nonl_m']
 
@@ -989,33 +930,46 @@ with tab_hrv_nonl:
     with col_sc:
         x_p = res['corrected_rr'][:-1]
         y_p = res['corrected_rr'][1:]
-        min_v = min(x_p.min(), y_p.min()) - 50
-        max_v = max(x_p.max(), y_p.max()) + 50
+        mean_x = np.mean(x_p); mean_y = np.mean(y_p)
+        sd1 = nm['sd1']; sd2 = nm['sd2']
+        min_v = min(mean_x - sd2 - 100, x_p.min() - 100)
+        max_v = max(mean_x + sd2 + 100, x_p.max() + 100)
 
         fig_poi = go.Figure()
-        fig_poi.add_trace(go.Scatter(x=x_p, y=y_p, mode="markers", name="RR Pairs (RRn, RRn+1)",
-                                     marker=dict(color="#29B6F6", size=6, opacity=0.65)))
+        # RR points plotted as blue squares
+        fig_poi.add_trace(go.Scatter(x=x_p, y=y_p, mode="markers", name="RR points",
+                                     marker=dict(color="blue", symbol="square", size=5)))
+        # Identity line (black/gray dashed line)
         fig_poi.add_trace(go.Scatter(x=[min_v, max_v], y=[min_v, max_v],
-                                     line=dict(color="#EF5350", dash="dash", width=1.5),
-                                     name="Line of Identity (y = x)"))
-        mean_x = np.mean(x_p); mean_y = np.mean(y_p)
-        sd1 = nm['sd1']; sd2 = nm['sd2']; ang = np.pi / 4
+                                     line=dict(color="#888888", dash="dash", width=1.0),
+                                     name="Identity line"))
+        
+        # Rotated ellipse (red line)
+        theta = np.linspace(0, 2*np.pi, 200)
+        cos_ang, sin_ang = np.cos(np.pi/4), np.sin(np.pi/4)
+        x_ellipse = mean_x + sd2 * np.cos(theta) * cos_ang - sd1 * np.sin(theta) * sin_ang
+        y_ellipse = mean_y + sd2 * np.cos(theta) * sin_ang + sd1 * np.sin(theta) * cos_ang
+        fig_poi.add_trace(go.Scatter(x=x_ellipse, y=y_ellipse, mode="lines",
+                                     line=dict(color="red", width=2.0), name="Ellipse"))
+        
+        ang = np.pi / 4
+        # SD1 axis (green line)
         fig_poi.add_trace(go.Scatter(
             x=[mean_x - sd1*np.sin(ang), mean_x + sd1*np.sin(ang)],
             y=[mean_y + sd1*np.cos(ang), mean_y - sd1*np.cos(ang)],
-            line=dict(color="#FF7043", width=3.5), name=f"SD1 = {sd1:.1f} ms"))
+            line=dict(color="green", width=2.0), name="SD1 axis"))
+        # SD2 axis (magenta line)
         fig_poi.add_trace(go.Scatter(
             x=[mean_x - sd2*np.cos(ang), mean_x + sd2*np.cos(ang)],
             y=[mean_y - sd2*np.sin(ang), mean_y + sd2*np.sin(ang)],
-            line=dict(color="#66BB6A", width=3.5), name=f"SD2 = {sd2:.1f} ms"))
-        # Centroid marker
-        fig_poi.add_trace(go.Scatter(x=[mean_x], y=[mean_y], mode="markers",
-                                     name="Centroid (Mean RR)",
-                                     marker=dict(color="#FFD600", size=12, symbol="star")))
+            line=dict(color="magenta", width=2.0), name="SD2 axis"))
+        
         fig_poi.update_layout(
-            title="Poincaré Plot — Phase-Space Representation of HRV",
-            xaxis_title="RR[n] (ms)", yaxis_title="RR[n+1] (ms)",
+            title="Poincaré Plot",
+            xaxis_title="RR(n) (ms)", yaxis_title="RR(n+1) (ms)",
             template="plotly_dark", height=460,
+            xaxis=dict(range=[min_v, max_v]),
+            yaxis=dict(range=[min_v, max_v]),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(l=20, r=20, t=45, b=20)
         )
@@ -1061,13 +1015,13 @@ with tab_hrv_nonl:
 # TAB 8 — REPORT DESK
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_report:
-    st.markdown('<div class="section-header">🎓 Academic Report Compiler <span class="clo-badge clo2">CLO2</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">📄 Report Compiler</div>', unsafe_allow_html=True)
 
     col_s1, col_s2 = st.columns(2)
     with col_s1:
-        student_name = st.text_input("Student Name", "Biomedical Student")
+        student_name = st.text_input("Analyst Name", "ECG Analyst")
     with col_s2:
-        student_id = st.text_input("Roll / Registration ID", "BME-2026-09")
+        student_id = st.text_input("Record / Reference ID", "REC-2026-09")
 
     # Settings summary
     st.markdown("**Analysis Configuration**")
@@ -1105,7 +1059,7 @@ with tab_report:
     st.markdown(res['interpretation'])
 
     st.markdown("---")
-    if st.button("📄 Compile Academic Reports (PDF + DOCX)"):
+    if st.button("📄 Compile Reports (PDF + DOCX)"):
         with st.spinner("Generating figures and compiling report…"):
             student_info = {'name': student_name, 'id': student_id}
             plots_dir = "temp_report_plots"

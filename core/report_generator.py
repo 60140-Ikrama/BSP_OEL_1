@@ -67,16 +67,20 @@ class ReportGenerator:
 
         # --- Figure 2: R-Peak Detection ---
         fig, ax = plt.subplots(figsize=(7.5, 3.2))
-        ax.plot(t[zoom_idx], filtered_sig[zoom_idx], color='#0D47A1', label='Filtered ECG', linewidth=1.2)
         
-        # Filter peaks within the 5s window
-        peaks_in_zoom = r_peaks[r_peaks < int(5.0 * self.fs)]
-        ax.scatter(t[peaks_in_zoom], filtered_sig[peaks_in_zoom], color='#FFD600', edgecolors='black', 
-                   s=40, zorder=5, label='Detected R-Peak (Pan-Tompkins)')
-        ax.set_title("Figure 2: Pan-Tompkins R-Peak Detection Overlay", fontsize=9, fontweight='bold')
-        ax.set_xlabel("Time (seconds)", fontsize=8)
-        ax.set_ylabel("Amplitude (mV)", fontsize=8)
+        # Show first 12 seconds for clear visualization (as in user's image)
+        zoom_idx = t <= 12.0
+        ax.plot(t[zoom_idx], filtered_sig[zoom_idx], color='#1f77b4', label='ECG Signal', linewidth=1.0)
+        
+        # Filter peaks within the 12s window
+        peaks_in_zoom = r_peaks[r_peaks < int(12.0 * self.fs)]
+        ax.scatter(t[peaks_in_zoom], filtered_sig[peaks_in_zoom], facecolors='none', edgecolors='red', 
+                   s=60, linewidths=1.5, zorder=5, label='R-Peaks')
+        ax.set_title("R-Peak Detection (Pan-Tompkins)", fontsize=10, fontweight='bold')
+        ax.set_xlabel("Time (s)", fontsize=9)
+        ax.set_ylabel("Amplitude", fontsize=9)
         ax.legend(loc='upper right', fontsize=8)
+        ax.grid(True)
         plt.tight_layout()
         paths['r_peaks'] = os.path.join(output_dir, 'fig2_r_peaks.png')
         plt.savefig(paths['r_peaks'], dpi=150)
@@ -145,39 +149,43 @@ class ReportGenerator:
         if len(rr_corrected) > 2:
             x_poinc = rr_corrected[:-1]
             y_poinc = rr_corrected[1:]
-            ax.scatter(x_poinc, y_poinc, color='#0D47A1', alpha=0.6, s=15, edgecolors='none', label='RR Interval Pairs')
+            ax.scatter(x_poinc, y_poinc, color='blue', marker='s', s=10, label='RR points')
             
-            # Draw line of identity (y = x)
-            min_val = min(np.min(x_poinc), np.min(y_poinc)) - 50
-            max_val = max(np.max(x_poinc), np.max(y_poinc)) + 50
-            ax.plot([min_val, max_val], [min_val, max_val], color='#D50000', linestyle='--', linewidth=1.0, label='Line of Identity (y = x)')
-            
-            # Draw ellipse axes (representing SD1 and SD2)
+            # Draw center
             mean_x = np.mean(x_poinc)
             mean_y = np.mean(y_poinc)
             sd1 = np.sqrt(0.5 * np.var(x_poinc - y_poinc, ddof=1))
             sd2 = np.sqrt(2 * np.var(rr_corrected, ddof=1) - 0.5 * np.var(x_poinc - y_poinc, ddof=1))
             
-            # Plot center
-            ax.scatter(mean_x, mean_y, color='#00E676', marker='+', s=100, zorder=6, label='Center Point')
+            # Draw line of identity (y = x)
+            min_val = min(mean_x - sd2 - 100, np.min(x_poinc) - 100)
+            max_val = max(mean_x + sd2 + 100, np.max(x_poinc) + 100)
+            ax.plot([min_val, max_val], [min_val, max_val], color='black', linestyle='--', linewidth=1.0, label='Identity line')
+            
+            # Draw rotated red ellipse representing SD1 and SD2
+            from matplotlib.patches import Ellipse
+            ellipse = Ellipse(xy=(mean_x, mean_y), width=2*sd2, height=2*sd1, angle=45,
+                              edgecolor='red', facecolor='none', linewidth=2.0, label='Ellipse')
+            ax.add_patch(ellipse)
             
             # Visual indicators for SD1 and SD2 orientation (45 degrees)
             angle = np.pi / 4  # 45 deg line of identity
             # Perpendicular to line of identity (SD1)
             ax.plot([mean_x - sd1 * np.sin(angle), mean_x + sd1 * np.sin(angle)],
                     [mean_y + sd1 * np.cos(angle), mean_y - sd1 * np.cos(angle)],
-                    color='#FF7043', linewidth=2.0, label=f'SD1 ({sd1:.1f} ms) - Short-term')
+                    color='green', linewidth=2.0, label='SD1 axis')
             # Along line of identity (SD2)
             ax.plot([mean_x - sd2 * np.cos(angle), mean_x + sd2 * np.cos(angle)],
                     [mean_y - sd2 * np.sin(angle), mean_y + sd2 * np.sin(angle)],
-                    color='#29B6F6', linewidth=2.0, label=f'SD2 ({sd2:.1f} ms) - Long-term')
+                    color='magenta', linewidth=2.0, label='SD2 axis')
             
             ax.set_xlim(min_val, max_val)
             ax.set_ylim(min_val, max_val)
-            ax.set_title("Figure 6: Poincaré Non-Linear Scatter Plot", fontsize=9, fontweight='bold')
-            ax.set_xlabel("RR\u2093 (ms)", fontsize=8)
-            ax.set_ylabel("RR\u2093\u208A\u2081 (ms)", fontsize=8)
+            ax.set_title("Poincaré Plot", fontsize=10, fontweight='bold')
+            ax.set_xlabel("RR(n) (ms)", fontsize=9)
+            ax.set_ylabel("RR(n+1) (ms)", fontsize=9)
             ax.legend(loc='lower right', fontsize=8)
+            ax.grid(True)
         else:
             ax.text(0.5, 0.5, "Insufficient data for Poincaré Plot", ha='center', va='center')
         plt.tight_layout()
@@ -332,7 +340,7 @@ class ReportGenerator:
         )
         
         header_data = [
-            [Paragraph("<b>OPEN ENDED LAB (OEL) REPORT: CLO1 & CLO2 Compliance</b>", header_title_style),
+            [Paragraph("<b>ECG & HEART RATE VARIABILITY ANALYSIS REPORT</b>", header_title_style),
              Paragraph("<b>Date:</b> May 31, 2026", header_date_style)]
         ]
         header_table = Table(header_data, colWidths=[5.4*inch, 2.1*inch])
@@ -351,14 +359,14 @@ class ReportGenerator:
         story.append(Paragraph("ECG Biomedical Signal Processing & Heart Rate Variability (HRV) Analysis System", 
                                ParagraphStyle('SubTitle', parent=title_style, fontSize=11, leading=14, textColor=colors.HexColor('#0284C7'), alignment=0, spaceAfter=12)))
         
-        # Student and Class Information Boxed Grid
+        # Patient and Report Information Boxed Grid
         info_data = [
-            [Paragraph("<b>Course Title:</b> Biomedical Signal Processing", body_style), 
-             Paragraph(f"<b>Student Name:</b> {student_info.get('name', 'N/A')}", body_style)],
-            [Paragraph("<b>Lab Task:</b> Open-Ended Lab Evaluation", body_style), 
-             Paragraph(f"<b>Roll/ID Number:</b> {student_info.get('id', 'N/A')}", body_style)],
+            [Paragraph("<b>System / Service:</b> ECG Analytics", body_style), 
+             Paragraph(f"<b>Analyst Name:</b> {student_info.get('name', 'N/A')}", body_style)],
+            [Paragraph("<b>Report Type:</b> Comprehensive HRV Analysis", body_style), 
+             Paragraph(f"<b>Record ID / Reference:</b> {student_info.get('id', 'N/A')}", body_style)],
             [Paragraph("<b>Department:</b> Biomedical Engineering", body_style), 
-             Paragraph("<b>Evaluation Score:</b> ______ / ______", body_style)]
+             Paragraph("<b>Status:</b> Final Analysis", body_style)]
         ]
         info_table = Table(info_data, colWidths=[3.75*inch, 3.75*inch])
         info_table.setStyle(TableStyle([
@@ -375,7 +383,7 @@ class ReportGenerator:
         story.append(Spacer(1, 15))
 
         # --- SECTION 1: OBJECTIVES ---
-        story.append(Paragraph("1. Laboratory Objectives", h1_style))
+        story.append(Paragraph("1. Objectives", h1_style))
         story.append(Paragraph(
             "1. Implement and validate a digital biomedical signal processing pipeline for high-frequency noise and baseline wander removal from raw electrocardiogram (ECG) data.<br/>"
             "2. Establish R-peak detection accuracy using the adaptive Pan-Tompkins derivative-threshold algorithm.<br/>"
@@ -508,7 +516,7 @@ class ReportGenerator:
         story.append(Spacer(1, 10))
 
         # --- SECTION 7: CONCLUSION & REFERENCES ---
-        story.append(Paragraph("7. Academic Conclusion", h1_style))
+        story.append(Paragraph("7. Conclusion", h1_style))
         story.append(Paragraph(
             "This experiment demonstrated the design and validation of a complete biomedical signal processing system. "
             "The dual-median filter successfully tracked non-linear baseline drift. Zero-phase bandpass filtering suppressed "
@@ -519,7 +527,7 @@ class ReportGenerator:
             body_style
         ))
         
-        story.append(Paragraph("8. Scientific References", h1_style))
+        story.append(Paragraph("8. References", h1_style))
         story.append(Paragraph(
             "1. Pan, J. and Tompkins, W. J., 'A Real-Time QRS Detection Algorithm,' <i>IEEE Transactions on Biomedical Engineering</i>, vol. BME-32, no. 3, pp. 230-236, 1985.<br/>"
             "2. Task Force of the European Society of Cardiology and the North American Society of Pacing and Electrophysiology, 'Heart rate variability: standards of measurement, physiological interpretation, and clinical use,' <i>Circulation</i>, vol. 93, no. 5, pp. 1043-1065, 1996.<br/>"
@@ -567,7 +575,7 @@ class ReportGenerator:
 
         # Title
         title = doc.add_paragraph()
-        title_run = title.add_run("OPEN ENDED LAB (OEL) REPORT: CLO1 & CLO2 Compliance")
+        title_run = title.add_run("ECG & HEART RATE VARIABILITY ANALYSIS REPORT")
         title_run.font.size = Pt(17)
         title_run.font.bold = True
         title_run.font.color.rgb = RGBColor(0x0F, 0x17, 0x2A) # Slate-900
@@ -585,9 +593,9 @@ class ReportGenerator:
         table.style = 'Light Shading Accent 1'
         
         info_data = [
-            ("Course Title: Biomedical Signal Processing", f"Student Name: {student_info.get('name', 'N/A')}"),
-            ("Lab Task: Open-Ended Lab Evaluation", f"Roll/ID Number: {student_info.get('id', 'N/A')}"),
-            ("Department: Biomedical Engineering", "Evaluation Score: ______ / ______")
+            ("System / Service: ECG Analytics", f"Analyst Name: {student_info.get('name', 'N/A')}"),
+            ("Report Type: Comprehensive HRV Analysis", f"Record ID / Reference: {student_info.get('id', 'N/A')}"),
+            ("Department: Biomedical Engineering", "Status: Final Analysis")
         ]
         
         for row_idx, (col1_text, col2_text) in enumerate(info_data):
@@ -617,7 +625,7 @@ class ReportGenerator:
             p.paragraph_format.space_before = Pt(12)
             p.paragraph_format.space_after = Pt(4)
 
-        add_section_header("1. Laboratory Objectives")
+        add_section_header("1. Objectives")
         doc.add_paragraph(
             "1. Implement and validate a digital biomedical signal processing pipeline for high-frequency noise and baseline wander removal from raw electrocardiogram (ECG) data.\n"
             "2. Establish R-peak detection accuracy using the adaptive Pan-Tompkins derivative-threshold algorithm.\n"
